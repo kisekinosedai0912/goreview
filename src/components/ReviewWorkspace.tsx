@@ -1,31 +1,50 @@
-import { lazy, memo, Suspense, useCallback, useMemo, useState } from "react";
+import { memo, Suspense, useCallback, useEffect, useMemo, useState, type ComponentType, type LazyExoticComponent } from "react";
 import { explainEvents } from "../lib/explain";
 import { groupByCategory } from "../lib/group-by-category";
-import type { ReviewSnapshot } from "../schemas/review";
+import type { ChangedFile, Explanation, ReviewSnapshot } from "../schemas/review";
 import FileTree from "./FileTree";
 import ReviewMeta from "./ReviewMeta";
 import ThemeToggle from "./ThemeToggle";
 
-const ComparisonStack = lazy(() => import("./ComparisonStack"));
-const ExplanationList = lazy(() => import("./ExplanationList"));
-
 type ReviewWorkspaceProps = {
 	snapshot: ReviewSnapshot;
+	ensureFile?: (path: string) => Promise<ChangedFile>;
+	source?: "github" | "fixture";
+	ComparisonStack: LazyExoticComponent<ComponentType<{ file: ChangedFile }>>;
+	ExplanationList: LazyExoticComponent<ComponentType<{ explanations: Explanation[] }>>;
 };
 
-function ReviewWorkspace({ snapshot }: ReviewWorkspaceProps) {
+function needsFileLoad(file: ChangedFile | undefined): boolean {
+	if (!file) return false;
+	return file.oldContent === null && file.newContent === null;
+}
+
+function ReviewWorkspace({
+	snapshot,
+	ensureFile,
+	source = "fixture",
+	ComparisonStack,
+	ExplanationList,
+}: ReviewWorkspaceProps) {
 	const [selectedPath, setSelectedPath] = useState<string | null>(
 		snapshot.files[0]?.path ?? null,
 	);
+	const [files, setFiles] = useState(snapshot.files);
+	const [loadingPath, setLoadingPath] = useState<string | null>(null);
+	const [loadError, setLoadError] = useState<string | null>(null);
 
-	const groups = useMemo(
-		() => groupByCategory(snapshot.files),
-		[snapshot.files],
-	);
+	useEffect(() => {
+		setFiles(snapshot.files);
+		setSelectedPath(snapshot.files[0]?.path ?? null);
+		setLoadingPath(null);
+		setLoadError(null);
+	}, [snapshot]);
+
+	const groups = useMemo(() => groupByCategory(files), [files]);
 
 	const selectedFile = useMemo(
-		() => snapshot.files.find((file) => file.path === selectedPath) ?? null,
-		[snapshot.files, selectedPath],
+		() => files.find((file) => file.path === selectedPath) ?? null,
+		[files, selectedPath],
 	);
 
 	const explanations = useMemo(
@@ -33,15 +52,51 @@ function ReviewWorkspace({ snapshot }: ReviewWorkspaceProps) {
 		[selectedFile],
 	);
 
+	const loadFile = useCallback(
+		async (path: string) => {
+			if (!ensureFile) return;
+
+			setLoadingPath(path);
+			setLoadError(null);
+
+			try {
+				const hydrated = await ensureFile(path);
+				setFiles((current) =>
+					current.map((file) => (file.path === path ? hydrated : file)),
+				);
+			} catch (error) {
+				setLoadError(
+					error instanceof Error ? error.message : "Failed to load file contents",
+				);
+			} finally {
+				setLoadingPath(null);
+			}
+		},
+		[ensureFile],
+	);
+
+	useEffect(() => {
+		if (!selectedPath || !ensureFile) return;
+		const file = files.find((item) => item.path === selectedPath);
+		if (!needsFileLoad(file)) return;
+		void loadFile(selectedPath);
+	}, [selectedPath, ensureFile, files, loadFile]);
+
 	const handleSelect = useCallback((path: string) => {
 		setSelectedPath(path);
+		setLoadError(null);
 	}, []);
+
+	const isLoadingFile = loadingPath !== null && loadingPath === selectedPath;
 
 	return (
 		<div className="review-workspace">
 			<aside className="review-workspace__sidebar">
 				<div className="review-brand">
 					<p className="review-brand__name">Goreview</p>
+					{source === "fixture" ? (
+						<p className="review-brand__hint">Fixture demo</p>
+					) : null}
 				</div>
 				<FileTree
 					groups={groups}
@@ -57,7 +112,7 @@ function ReviewWorkspace({ snapshot }: ReviewWorkspaceProps) {
 
 				<div className="review-workspace__content">
 					<div className="review-scroll">
-						<ReviewMeta snapshot={snapshot} />
+						<ReviewMeta snapshot={{ ...snapshot, files }} />
 
 						{selectedFile ? (
 							<div key={selectedPath} className="review-scroll__body">
@@ -71,17 +126,29 @@ function ReviewWorkspace({ snapshot }: ReviewWorkspaceProps) {
 									<h2 className="review-scroll__path">{selectedFile.path}</h2>
 								</div>
 
-								<Suspense
-									fallback={<div className="panel-fallback">Loading comparison…</div>}
-								>
-									<ComparisonStack file={selectedFile} />
-								</Suspense>
+								{loadError ? (
+									<p className="panel-fallback">{loadError}</p>
+								) : isLoadingFile ? (
+									<p className="panel-fallback">Loading file contents…</p>
+								) : (
+									<>
+										<Suspense
+											fallback={
+												<div className="panel-fallback">Loading comparison…</div>
+											}
+										>
+											<ComparisonStack file={selectedFile} />
+										</Suspense>
 
-								<Suspense
-									fallback={<div className="panel-fallback">Loading changes…</div>}
-								>
-									<ExplanationList explanations={explanations} />
-								</Suspense>
+										<Suspense
+											fallback={
+												<div className="panel-fallback">Loading changes…</div>
+											}
+										>
+											<ExplanationList explanations={explanations} />
+										</Suspense>
+									</>
+								)}
 							</div>
 						) : (
 							<div className="review-workspace__empty">

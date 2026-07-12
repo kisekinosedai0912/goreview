@@ -6,8 +6,6 @@ A category-aware pull request review UI. Instead of dumping you into a raw diff,
 
 Make PR review faster to scan and easier to reason about — especially when a change spans database, backend, UI, packages, and docs in one branch.
 
-The long-term intent is a review surface fed by real PR analysis. Today this repo is the **frontend prototype**: the data contract, layout, and interaction model for that experience.
-
 ## What it does
 
 - **Category-grouped file tree** — files bucketed as `database`, `ui`, `backend`, `package`, `config`, `test`, `ci`, `docs`, or `unknown`
@@ -40,6 +38,50 @@ ReviewSnapshot
 ```
 
 Anything that later analyzes a PR should emit JSON matching this schema; the UI already consumes it.
+
+## GitHub integration
+
+The demo can load a real pull request when env vars are set. Copy [`.env.example`](.env.example) to `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+```env
+VITE_GITHUB_TOKEN=ghp_...
+VITE_GITHUB_OWNER=octocat
+VITE_GITHUB_REPO=Hello-World
+VITE_GITHUB_PR=1347
+```
+
+Or pass query params: `?owner=octocat&repo=Hello-World&pr=1347` (token still comes from env).
+
+Without token + PR coordinates, the app falls back to the fixture snapshot.
+
+**Security:** a PAT in `VITE_*` is exposed to the browser. Fine for local demos; production apps should call `fromPullRequest` from a backend and pass the snapshot to the UI.
+
+### Library API
+
+```ts
+import { fromPullRequest } from "./core/github/from-pull-request";
+
+const { snapshot, ensureFile } = await fromPullRequest({
+	owner: "octocat",
+	repo: "Hello-World",
+	number: 1347,
+	token: process.env.GITHUB_TOKEN,
+});
+
+// snapshot.files are classified + analyzed (eager for ≤40 files)
+// large PRs lazy-load via ensureFile(path)
+```
+
+Pipeline:
+
+1. Octokit fetches PR meta + file list + base/head contents
+2. `classifyFile` assigns categories from path rules
+3. `analyzeFile` emits events from `package.json` and TypeScript (`ts-morph`)
+4. `explainEvents` turns events into readable copy in the UI
 
 ## How to Install
 
@@ -99,6 +141,7 @@ Open the URL Vite prints (usually `http://localhost:5173`).
 
 ## Roadmap (high level)
 
-- Wire real PR / git data into `ReviewSnapshot`
 - Diff-aware or syntax-highlighted code panes
-- Infer categories and events from analysis instead of fixtures
+- npm publish + CLI entry
+- OAuth / GitHub App auth (replace browser PAT)
+- More domain analyzers (Prisma, React hooks)

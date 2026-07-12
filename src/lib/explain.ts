@@ -13,6 +13,8 @@ const templates: {
 		`Added package ${event.name}@${event.version}`,
 	"dependency.updated": (event) =>
 		`Updated package ${event.name}: ${event.before} → ${event.after}`,
+	"dependency.removed": (event) =>
+		`Removed package ${event.name}@${event.version}`,
 };
 
 export function explainEvent(

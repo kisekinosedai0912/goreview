@@ -39,6 +39,11 @@ export const changeEventSchema = z.discriminatedUnion("kind", [
 		before: z.string(),
 		after: z.string(),
 	}),
+	z.object({
+		kind: z.literal("dependency.removed"),
+		name: z.string(),
+		version: z.string(),
+	}),
 ]);
 
 export const changedFileSchema = z.object({

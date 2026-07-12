@@ -169,6 +169,13 @@ body {
 	color: var(--ink);
 }
 
+.review-brand__hint,
+.review-load-hint {
+	margin-top: 0.5rem;
+	font-size: 0.72rem;
+	color: var(--quiet);
+}
+
 .review-meta {
 	display: grid;
 	gap: 0.85rem;
