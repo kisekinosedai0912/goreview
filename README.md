@@ -1,75 +1,104 @@
-# React + TypeScript + Vite
+# Goreview
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A category-aware pull request review UI. Instead of dumping you into a raw diff, Goreview groups changed files by what they touch, shows before/after content side by side, and surfaces structured change summaries in plain language.
 
-Currently, two official plugins are available:
+## Goal
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Make PR review faster to scan and easier to reason about — especially when a change spans database, backend, UI, packages, and docs in one branch.
 
-## React Compiler
+The long-term intent is a review surface fed by real PR analysis. Today this repo is the **frontend prototype**: the data contract, layout, and interaction model for that experience.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## What it does
 
-## Expanding the ESLint configuration
+- **Category-grouped file tree** — files bucketed as `database`, `ui`, `backend`, `package`, `config`, `test`, `ci`, `docs`, or `unknown`
+- **Before / after comparison** — full file contents for the selected path (not line-level hunks yet)
+- **Structured explanations** — events like symbol added/removed, signature changed, or dependency added/updated rendered as readable bullets
+- **PR metadata** — title, repo, branches, and short base/head SHAs fetched from your actual github data
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Stack
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+| Layer           | Choice                           |
+| --------------- | -------------------------------- |
+| UI              | React 19 + TypeScript            |
+| Build           | Vite 8                           |
+| Styling         | Tailwind CSS v4                  |
+| Components      | shadcn/ui (Radix) + Lucide icons |
+| Validation      | Zod 4                            |
+| Package manager | pnpm                             |
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Data model
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Defined in `src/schemas/review.ts`:
 
 ```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+ReviewSnapshot
+  ├── metadata (title, repo, branches, SHAs)
+  └── files[]
+        ├── path, status, old/new content
+        ├── categories[]
+        └── events[]  (symbol / signature / dependency changes)
 ```
+
+Anything that later analyzes a PR should emit JSON matching this schema; the UI already consumes it.
+
+## How to Install
+
+```bash
+# npm
+npm install goreview
+
+# pnpm
+pnpm add goreview
+
+# yarn
+yarn add goreview
+```
+
+Peer dependencies you’ll typically already have in a React app:
+
+```bash
+npm install react react-dom
+# or
+pnpm add react react-dom
+# or
+yarn add react react-dom
+```
+
+### Try without installing
+
+```bash
+# npm
+npx goreview
+
+# pnpm
+pnpm dlx goreview
+
+# yarn
+yarn dlx goreview
+```
+
+That will launch the demo review UI against sample data (once the CLI entry is wired).
+
+### Local development (this repo)
+
+Working on the prototype itself:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Open the URL Vite prints (usually `http://localhost:5173`).
+
+| Script         | Purpose                      |
+| -------------- | ---------------------------- |
+| `pnpm dev`     | Dev server with HMR          |
+| `pnpm build`   | Typecheck + production build |
+| `pnpm preview` | Serve the production build   |
+| `pnpm lint`    | ESLint                       |
+
+## Roadmap (high level)
+
+- Wire real PR / git data into `ReviewSnapshot`
+- Diff-aware or syntax-highlighted code panes
+- Infer categories and events from analysis instead of fixtures
