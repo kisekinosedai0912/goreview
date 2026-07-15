@@ -20,6 +20,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	type UIEvent,
 } from "react";
 import { useAppTheme } from "../../highlight/use-highlighted";
 import type { ViewMode } from "../DiffViewer";
@@ -155,6 +156,8 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 		ref,
 	) {
 		const scrollRef = useRef<HTMLDivElement | null>(null);
+		const listRef = useRef<HTMLDivElement | null>(null);
+		const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
 		const [collapsedHunks, setCollapsedHunks] = useState<
 			ReadonlyMap<string, ReadonlySet<number>>
 		>(new Map());
@@ -332,6 +335,27 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 			});
 		}, []);
 
+		const changeMode = useCallback(
+			(nextMode: ViewMode) => {
+				if (horizontalScrollRef.current) {
+					horizontalScrollRef.current.scrollLeft = 0;
+				}
+				listRef.current?.style.setProperty("--diff-scroll-left", "0px");
+				onModeChange(nextMode);
+			},
+			[onModeChange],
+		);
+
+		const syncDiffScroll = useCallback(
+			(event: UIEvent<HTMLDivElement>) => {
+				listRef.current?.style.setProperty(
+					"--diff-scroll-left",
+					`${event.currentTarget.scrollLeft}px`,
+				);
+			},
+			[],
+		);
+
 		if (files.length === 0) {
 			return (
 				<div className="review-feed__scroll">
@@ -344,12 +368,14 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 		}
 
 		return (
-			<div ref={scrollRef} className="review-feed__scroll">
-				<div
-					className="review-feed__list"
-					data-mode={mode}
-					style={{ height: virtualizer.getTotalSize() }}
-				>
+			<div className="review-feed">
+				<div ref={scrollRef} className="review-feed__scroll">
+					<div
+						ref={listRef}
+						className="review-feed__list"
+						data-mode={mode}
+						style={{ height: virtualizer.getTotalSize() }}
+					>
 					{virtualizer.getVirtualItems().map((virtualItem) => {
 						const row = model.rows[virtualItem.index]!;
 						const style = {
@@ -480,44 +506,63 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 									{...common}
 									className="review-feed__item review-feed__item--diff-header"
 								>
-									<div className="diff-viewer__header">
-										<div className="diff-viewer__stats">
-											<span className="tree-stats__additions">
-												+{row.file.diff?.additions ?? 0}
-											</span>
-											<span className="tree-stats__deletions">
-												−{row.file.diff?.deletions ?? 0}
-											</span>
-										</div>
-										{mode === "split" ? (
-											<div className="diff-viewer__columns" aria-hidden="true">
-												<span>Old · base</span>
-												<span>New · head</span>
+									<div
+										className="review-feed__diff-canvas"
+										data-file-status={row.file.status}
+									>
+										<div className="diff-viewer__header">
+											<div className="diff-viewer__stats">
+												<span className="tree-stats__additions">
+													+{row.file.diff?.additions ?? 0}
+												</span>
+												<span className="tree-stats__deletions">
+													−{row.file.diff?.deletions ?? 0}
+												</span>
 											</div>
-										) : null}
-										<div
-											className="diff-viewer__modes"
-											role="tablist"
-											aria-label="Diff view mode"
-										>
-											<button
-												type="button"
-												role="tab"
-												aria-selected={mode === "unified"}
-												className="tree-compare__mode"
-												onClick={() => onModeChange("unified")}
+											{mode === "split" ? (
+												<div
+													className="diff-viewer__columns"
+													data-single-side={
+														row.file.status === "added"
+															? "right"
+															: row.file.status === "deleted"
+																? "left"
+																: undefined
+													}
+													aria-hidden="true"
+												>
+													{row.file.status !== "added" ? (
+														<span>Old · base</span>
+													) : null}
+													{row.file.status !== "deleted" ? (
+														<span>New · head</span>
+													) : null}
+												</div>
+											) : null}
+											<div
+												className="diff-viewer__modes"
+												role="tablist"
+												aria-label="Diff view mode"
 											>
-												Unified
-											</button>
-											<button
-												type="button"
-												role="tab"
-												aria-selected={mode === "split"}
-												className="tree-compare__mode"
-												onClick={() => onModeChange("split")}
-											>
-												Split
-											</button>
+												<button
+													type="button"
+													role="tab"
+													aria-selected={mode === "unified"}
+													className="tree-compare__mode"
+													onClick={() => changeMode("unified")}
+												>
+													Unified
+												</button>
+												<button
+													type="button"
+													role="tab"
+													aria-selected={mode === "split"}
+													className="tree-compare__mode"
+													onClick={() => changeMode("split")}
+												>
+													Split
+												</button>
+											</div>
 										</div>
 									</div>
 								</div>
@@ -550,28 +595,45 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 								tabIndex={-1}
 								className="review-feed__item review-feed__item--diff"
 							>
-								<DiffRowContent
-									file={row.file}
-									row={row.diffRow}
-									theme={theme}
-									threads={commentThreads}
-									onCreateComment={onCreateComment}
-									onReplyToComment={onReplyToComment}
-									lineExplanations={lineExplanations}
-									explainingAnchors={explainingKeys}
-									onExplainLine={onExplainLine}
-									onDismissLineExplanation={onDismissLineExplanation}
-									onToggleHunk={(hunkIndex) =>
-										toggleHunk(row.file.path, hunkIndex)
-									}
-									onExpandGap={(gapIndex) =>
-										expandGap(row.file.path, gapIndex)
-									}
-								/>
+								<div
+									className="review-feed__diff-canvas"
+									data-file-status={row.file.status}
+								>
+									<DiffRowContent
+										file={row.file}
+										row={row.diffRow}
+										theme={theme}
+										threads={commentThreads}
+										onCreateComment={onCreateComment}
+										onReplyToComment={onReplyToComment}
+										lineExplanations={lineExplanations}
+										explainingAnchors={explainingKeys}
+										onExplainLine={onExplainLine}
+										onDismissLineExplanation={onDismissLineExplanation}
+										onToggleHunk={(hunkIndex) =>
+											toggleHunk(row.file.path, hunkIndex)
+										}
+										onExpandGap={(gapIndex) =>
+											expandGap(row.file.path, gapIndex)
+										}
+									/>
+								</div>
 							</div>
 						);
 					})}
+					</div>
 				</div>
+				{mode === "split" ? (
+					<div
+						ref={horizontalScrollRef}
+						className="review-feed__horizontal-scroll"
+						onScroll={syncDiffScroll}
+						aria-label="Scroll split diff horizontally"
+						tabIndex={0}
+					>
+						<div className="review-feed__horizontal-track" />
+					</div>
+				) : null}
 			</div>
 		);
 	},

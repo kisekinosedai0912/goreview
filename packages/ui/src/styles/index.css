@@ -601,12 +601,21 @@ body {
 	overflow: hidden;
 }
 
+.review-feed {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+}
+
 .review-feed__scroll {
 	width: 100%;
 	height: 100%;
-	overflow: auto;
+	overflow-x: hidden;
+	overflow-y: auto;
 	overscroll-behavior-x: contain;
 	scrollbar-gutter: stable;
+	padding-bottom: 14px;
 }
 
 .review-feed__list {
@@ -638,6 +647,7 @@ body {
 .review-feed__item--diff {
 	left: 2.5rem;
 	width: calc(100% - 5rem);
+	overflow: hidden;
 	border-right: 1px solid var(--line);
 	border-left: 1px solid var(--line);
 	background: var(--surface-raised);
@@ -653,9 +663,51 @@ body {
 	min-height: 24px;
 }
 
-.review-feed__list[data-mode="split"] .review-feed__item--diff-header,
-.review-feed__list[data-mode="split"] .review-feed__item--diff {
-	min-width: 1180px;
+.review-feed__diff-canvas {
+	width: 100%;
+}
+
+.review-feed__list[data-mode="split"] .review-feed__diff-canvas {
+	width: max(100%, 1180px);
+	transform: translateX(calc(-1 * var(--diff-scroll-left, 0px)));
+	will-change: transform;
+}
+
+.review-feed__horizontal-scroll {
+	position: absolute;
+	z-index: 9;
+	right: 2.5rem;
+	bottom: 0;
+	left: 2.5rem;
+	height: 14px;
+	overflow-x: scroll;
+	overflow-y: hidden;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	background: var(--surface);
+	box-shadow: var(--elevation-1);
+	scrollbar-color: var(--brand) color-mix(in srgb, var(--quiet) 12%, transparent);
+	scrollbar-width: auto;
+}
+
+.review-feed__horizontal-scroll::-webkit-scrollbar {
+	height: 12px;
+}
+
+.review-feed__horizontal-scroll::-webkit-scrollbar-track {
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--quiet) 12%, transparent);
+}
+
+.review-feed__horizontal-scroll::-webkit-scrollbar-thumb {
+	border: 2px solid var(--surface);
+	border-radius: 999px;
+	background: var(--brand);
+}
+
+.review-feed__horizontal-track {
+	width: 1180px;
+	height: 1px;
 }
 
 .review-feed__item--diff .diff-hunk-header,
@@ -1524,6 +1576,15 @@ body {
 	border-left: 1px solid var(--line);
 }
 
+.diff-viewer__columns[data-single-side] {
+	grid-template-columns: 1fr;
+}
+
+.diff-viewer__columns[data-single-side] span:last-child {
+	padding-left: 0;
+	border-left: 0;
+}
+
 .diff-viewer__stats {
 	display: inline-flex;
 	gap: 0.55rem;
@@ -1604,6 +1665,11 @@ body {
 
 .diff-line-block[data-split] .inline-comment__trigger-group[data-side="RIGHT"] {
 	left: 50%;
+}
+
+.diff-line-block[data-single-side="right"]
+	.inline-comment__trigger-group[data-side="RIGHT"] {
+	left: 0;
 }
 
 .inline-comment__trigger {
@@ -1917,6 +1983,18 @@ body {
 	width: 100%;
 	min-width: 820px;
 	min-height: 24px;
+}
+
+.diff-line-block[data-single-side="right"] .diff-pair {
+	grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.diff-line-block[data-single-side="left"] .diff-pair {
+	grid-template-columns: minmax(0, 1fr) 0;
+}
+
+.diff-line-block[data-single-side] .diff-line--half + .diff-line--half {
+	border-left: 0;
 }
 
 .diff-line--half {
