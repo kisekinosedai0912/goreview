@@ -17,4 +17,9 @@ export default defineConfig({
 		plugins: [tailwindcss()],
 		worker: { format: "es" as const },
 	}),
+	webExt: {
+		// The content script only runs on PR pages, so land the dev browser
+		// somewhere it has something to do.
+		startUrls: ["https://github.com/facebook/react/pulls"],
+	},
 });
