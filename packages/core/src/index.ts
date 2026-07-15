@@ -1,4 +1,6 @@
 export * from "./schemas/review";
+export * from "./schemas/comment";
+export * from "./schemas/intelligence";
 export { classifyFile } from "./classify/classify-file";
 export { categoryRules, type CategoryRule } from "./classify/rules";
 export { explainEvent, explainEvents } from "./explain";
@@ -24,3 +26,23 @@ export {
 	type CheckAnnotation,
 	type ReviewReport,
 } from "./report/markdown";
+export {
+	anchorsForDiffLine,
+	findFirstChangedAnchor,
+	getCommentableAnchors,
+	isCommentableAnchor,
+} from "./review/anchors";
+export {
+	getOrderedFiles,
+	matchesReviewFilters,
+	type ReviewFilters,
+} from "./review/order";
+export {
+	buildDeterministicIntelligence,
+	scoreFileRisk,
+	validateIntelligenceEvidence,
+} from "./review/intelligence";
+export type {
+	ExplainCodeInput,
+	ReviewDataSource,
+} from "./review/data-source";
