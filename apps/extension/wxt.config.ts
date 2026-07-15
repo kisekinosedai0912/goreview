@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "wxt";
 
@@ -22,12 +21,5 @@ export default defineConfig({
 		// The content script only runs on PR pages, so land the dev browser
 		// somewhere it has something to do.
 		startUrls: ["https://github.com/facebook/react/pulls"],
-		// Dev in Brave instead of Chrome, with a persistent profile so
-		// GitHub sign-in survives restarts.
-		binaries: {
-			chrome: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-		},
-		chromiumProfile: resolve(".wxt/brave-profile"),
-		keepProfileChanges: true,
 	},
 });
