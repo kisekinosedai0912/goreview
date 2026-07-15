@@ -1,6 +1,7 @@
 import {
 	memo,
 	useCallback,
+	useEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -36,6 +37,10 @@ type FileTreeCompareProps = {
 	files: ChangedFile[];
 	selectedPath: string | null;
 	onSelect: (path: string) => void;
+	statusFilter: ReadonlySet<FileStatus>;
+	categoryFilter: ReadonlySet<ChangeCategory>;
+	onStatusFilterChange: (filter: ReadonlySet<FileStatus>) => void;
+	onCategoryFilterChange: (filter: ReadonlySet<ChangeCategory>) => void;
 	/** Paths the reviewer marked as viewed; rendered dimmed with a check. */
 	viewed?: ReadonlySet<string>;
 };
@@ -75,16 +80,14 @@ function FileTreeCompare({
 	files,
 	selectedPath,
 	onSelect,
+	statusFilter,
+	categoryFilter,
+	onStatusFilterChange,
+	onCategoryFilterChange,
 	viewed,
 }: FileTreeCompareProps) {
 	const [groupMode, setGroupMode] = useState<GroupMode>("directory");
 	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-	const [statusFilter, setStatusFilter] = useState<ReadonlySet<FileStatus>>(
-		new Set(),
-	);
-	const [categoryFilter, setCategoryFilter] = useState<
-		ReadonlySet<ChangeCategory>
-	>(new Set());
 	const [activeIndex, setActiveIndex] = useState(0);
 
 	const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -259,23 +262,34 @@ function FileTreeCompare({
 		[rows, activeIndex, collapsed, moveActive, toggleCollapse, activateRow],
 	);
 
-	const toggleStatus = useCallback((status: FileStatus) => {
-		setStatusFilter((current) => {
-			const next = new Set(current);
+	useEffect(() => {
+		if (!selectedPath) return;
+		const index = rows.findIndex(
+			(row) => row.type === "file" && row.node.path === selectedPath,
+		);
+		if (index < 0) return;
+		virtualizer.scrollToIndex(index, { align: "auto" });
+	}, [selectedPath, rows, virtualizer]);
+
+	const toggleStatus = useCallback(
+		(status: FileStatus) => {
+			const next = new Set(statusFilter);
 			if (next.has(status)) next.delete(status);
 			else next.add(status);
-			return next;
-		});
-	}, []);
+			onStatusFilterChange(next);
+		},
+		[statusFilter, onStatusFilterChange],
+	);
 
-	const toggleCategory = useCallback((category: ChangeCategory) => {
-		setCategoryFilter((current) => {
-			const next = new Set(current);
+	const toggleCategory = useCallback(
+		(category: ChangeCategory) => {
+			const next = new Set(categoryFilter);
 			if (next.has(category)) next.delete(category);
 			else next.add(category);
-			return next;
-		});
-	}, []);
+			onCategoryFilterChange(next);
+		},
+		[categoryFilter, onCategoryFilterChange],
+	);
 
 	return (
 		<div className="tree-compare">

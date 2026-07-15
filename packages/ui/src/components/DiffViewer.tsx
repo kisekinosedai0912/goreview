@@ -18,7 +18,7 @@ import {
 } from "../highlight/use-highlighted";
 import type { TokenLine, TokenSpan } from "../highlight/types";
 
-type ViewMode = "unified" | "split";
+export type ViewMode = "unified" | "split";
 
 type DiffRow =
 	| {
@@ -35,6 +35,10 @@ type DiffRow =
 
 type DiffViewerProps = {
 	file: ChangedFile;
+	mode?: ViewMode;
+	onModeChange?: (mode: ViewMode) => void;
+	/** Render into the parent's scroll flow instead of creating a nested scroller. */
+	continuous?: boolean;
 };
 
 const LINE_HEIGHT = 24;
@@ -105,8 +109,21 @@ function computeGaps(hunks: DiffHunk[], newLineCount: number): Gap[] {
 	return gaps;
 }
 
-function DiffViewer({ file }: DiffViewerProps) {
-	const [mode, setMode] = useState<ViewMode>("unified");
+function DiffViewer({
+	file,
+	mode: controlledMode,
+	onModeChange,
+	continuous = false,
+}: DiffViewerProps) {
+	const [localMode, setLocalMode] = useState<ViewMode>("split");
+	const mode = controlledMode ?? localMode;
+	const setMode = useCallback(
+		(next: ViewMode) => {
+			if (controlledMode === undefined) setLocalMode(next);
+			onModeChange?.(next);
+		},
+		[controlledMode, onModeChange],
+	);
 	const [collapsedHunks, setCollapsedHunks] = useState<ReadonlySet<number>>(
 		new Set(),
 	);
@@ -231,6 +248,52 @@ function DiffViewer({ file }: DiffViewerProps) {
 		setExpandedGaps((current) => new Set(current).add(gapIndex));
 	}, []);
 
+	const renderRow = useCallback(
+		(row: DiffRow) =>
+			row.type === "hunk" ? (
+				<button
+					type="button"
+					className="diff-hunk-header"
+					aria-expanded={!row.collapsed}
+					onClick={() => toggleHunk(row.hunkIndex)}
+				>
+					<span
+						className="tree-dir__chevron"
+						data-collapsed={row.collapsed || undefined}
+						aria-hidden="true"
+					/>
+					<span className="diff-hunk-header__range">{row.header}</span>
+					{row.collapsed ? (
+						<span className="diff-hunk-header__hidden">
+							{row.hiddenLines} hidden lines
+						</span>
+					) : null}
+				</button>
+			) : row.type === "gap" ? (
+				<button
+					type="button"
+					className="diff-gap"
+					onClick={() => expandGap(row.gapIndex)}
+				>
+					⋯ Expand {row.count} unchanged {row.count === 1 ? "line" : "lines"}
+				</button>
+			) : row.type === "line" ? (
+				<UnifiedLine
+					line={row.line}
+					oldTokens={oldTokens}
+					newTokens={newTokens}
+				/>
+			) : (
+				<SplitPair
+					left={row.left}
+					right={row.right}
+					oldTokens={oldTokens}
+					newTokens={newTokens}
+				/>
+			),
+		[expandGap, newTokens, oldTokens, toggleHunk],
+	);
+
 	if (!file.diff) {
 		return (
 			<section className="diff-viewer diff-viewer--empty">
@@ -289,70 +352,38 @@ function DiffViewer({ file }: DiffViewerProps) {
 				</div>
 			</header>
 
-			<div ref={scrollRef} className="diff-viewer__scroll">
-				<div
-					className="diff-viewer__body"
-					style={{ height: virtualizer.getTotalSize() }}
-				>
-					{virtualizer.getVirtualItems().map((virtualRow) => {
-						const row = rows[virtualRow.index]!;
-
-						return (
-							<div
-								key={row.key}
-								className="diff-viewer__row"
-								style={{
-									transform: `translateY(${virtualRow.start}px)`,
-									height: virtualRow.size,
-								}}
-							>
-								{row.type === "hunk" ? (
-									<button
-										type="button"
-										className="diff-hunk-header"
-										aria-expanded={!row.collapsed}
-										onClick={() => toggleHunk(row.hunkIndex)}
-									>
-										<span
-											className="tree-dir__chevron"
-											data-collapsed={row.collapsed || undefined}
-											aria-hidden="true"
-										/>
-										<span className="diff-hunk-header__range">{row.header}</span>
-										{row.collapsed ? (
-											<span className="diff-hunk-header__hidden">
-												{row.hiddenLines} hidden lines
-											</span>
-										) : null}
-									</button>
-								) : row.type === "gap" ? (
-									<button
-										type="button"
-										className="diff-gap"
-										onClick={() => expandGap(row.gapIndex)}
-									>
-										⋯ Expand {row.count} unchanged{" "}
-										{row.count === 1 ? "line" : "lines"}
-									</button>
-								) : row.type === "line" ? (
-									<UnifiedLine
-										line={row.line}
-										oldTokens={oldTokens}
-										newTokens={newTokens}
-									/>
-								) : (
-									<SplitPair
-										left={row.left}
-										right={row.right}
-										oldTokens={oldTokens}
-										newTokens={newTokens}
-									/>
-								)}
-							</div>
-						);
-					})}
+			{continuous ? (
+				<div className="diff-viewer__body diff-viewer__body--continuous">
+					{rows.map((row) => (
+						<div key={row.key} className="diff-viewer__row diff-viewer__row--flow">
+							{renderRow(row)}
+						</div>
+					))}
 				</div>
-			</div>
+			) : (
+				<div ref={scrollRef} className="diff-viewer__scroll">
+					<div
+						className="diff-viewer__body"
+						style={{ height: virtualizer.getTotalSize() }}
+					>
+						{virtualizer.getVirtualItems().map((virtualRow) => {
+							const row = rows[virtualRow.index]!;
+							return (
+								<div
+									key={row.key}
+									className="diff-viewer__row"
+									style={{
+										transform: `translateY(${virtualRow.start}px)`,
+										height: virtualRow.size,
+									}}
+								>
+									{renderRow(row)}
+								</div>
+							);
+						})}
+					</div>
+				</div>
+			)}
 		</section>
 	);
 }

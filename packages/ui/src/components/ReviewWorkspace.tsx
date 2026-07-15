@@ -1,111 +1,150 @@
 import {
-	lazy,
 	memo,
-	Suspense,
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import {
-	explainEvents,
+	getOrderedFiles,
+	type ChangeCategory,
 	type ChangedFile,
+	type ReviewDataSource,
 	type ReviewSnapshot,
 } from "@goreview/core";
 import FileJumper from "./FileJumper";
 import FileTreeCompare from "./FileTreeCompare";
-import ReviewMeta from "./ReviewMeta";
 import ThemeToggle from "./ThemeToggle";
+import ReviewFeed, {
+	type ReviewFeedHandle,
+} from "./review/ReviewFeed";
+import type { ViewMode } from "./DiffViewer";
 import { useViewedFiles } from "../lib/use-viewed-files";
-
-const DiffViewer = lazy(() => import("./DiffViewer"));
-const ExplanationList = lazy(() => import("./ExplanationList"));
 
 type ReviewWorkspaceProps = {
 	snapshot: ReviewSnapshot;
-	ensureFile?: (path: string) => Promise<ChangedFile>;
+	dataSource?: ReviewDataSource;
 	source?: "github" | "fixture";
 };
 
-function needsFileLoad(file: ChangedFile | undefined): boolean {
-	if (!file) return false;
-	return file.oldContent === null && file.newContent === null;
+function storedViewMode(): ViewMode {
+	if (typeof window === "undefined") return "split";
+	return window.localStorage.getItem("goreview-diff-mode") === "unified"
+		? "unified"
+		: "split";
 }
 
 function ReviewWorkspace({
 	snapshot,
-	ensureFile,
+	dataSource,
 	source = "fixture",
 }: ReviewWorkspaceProps) {
+	const initialFiles = useMemo(
+		() => getOrderedFiles(snapshot.files),
+		[snapshot.files],
+	);
 	const [selectedPath, setSelectedPath] = useState<string | null>(
-		snapshot.files[0]?.path ?? null,
+		initialFiles[0]?.path ?? null,
 	);
 	const [files, setFiles] = useState(snapshot.files);
-	const [loadingPath, setLoadingPath] = useState<string | null>(null);
-	const [loadError, setLoadError] = useState<string | null>(null);
+	const [loadingPaths, setLoadingPaths] = useState<ReadonlySet<string>>(
+		new Set(),
+	);
+	const [errors, setErrors] = useState<ReadonlyMap<string, string>>(new Map());
 	const [jumperOpen, setJumperOpen] = useState(false);
+	const [statusFilter, setStatusFilter] = useState<
+		ReadonlySet<ChangedFile["status"]>
+	>(new Set());
+	const [categoryFilter, setCategoryFilter] = useState<
+		ReadonlySet<ChangeCategory>
+	>(new Set());
+	const [mode, setMode] = useState<ViewMode>(storedViewMode);
+	const feedRef = useRef<ReviewFeedHandle | null>(null);
+	const inFlightRef = useRef(new Set<string>());
 
-	// Reset state during render when a new snapshot arrives (avoids an
-	// extra effect-driven render pass).
 	const [prevSnapshot, setPrevSnapshot] = useState(snapshot);
 	if (prevSnapshot !== snapshot) {
 		setPrevSnapshot(snapshot);
 		setFiles(snapshot.files);
-		setSelectedPath(snapshot.files[0]?.path ?? null);
-		setLoadingPath(null);
-		setLoadError(null);
+		setSelectedPath(getOrderedFiles(snapshot.files)[0]?.path ?? null);
+		setLoadingPaths(new Set());
+		setErrors(new Map());
+		inFlightRef.current.clear();
 	}
 
 	const reviewKey = `${snapshot.repo}#${snapshot.headSha}`;
 	const { viewed, toggleViewed } = useViewedFiles(reviewKey);
 
-	const selectedFile = useMemo(
-		() => files.find((file) => file.path === selectedPath) ?? null,
-		[files, selectedPath],
-	);
-
-	const explanations = useMemo(
-		() => (selectedFile ? explainEvents(selectedFile.events) : []),
-		[selectedFile],
+	const orderedFiles = useMemo(
+		() =>
+			getOrderedFiles(files, {
+				statuses: statusFilter,
+				categories: categoryFilter,
+			}),
+		[files, statusFilter, categoryFilter],
 	);
 
 	const loadFile = useCallback(
 		async (path: string) => {
-			if (!ensureFile) return;
-
-			setLoadingPath(path);
-			setLoadError(null);
+			if (!dataSource || inFlightRef.current.has(path)) return;
+			const file = files.find((candidate) => candidate.path === path);
+			if (!file || file.oldContent !== null || file.newContent !== null) return;
+			inFlightRef.current.add(path);
+			setLoadingPaths((current) => new Set(current).add(path));
+			setErrors((current) => {
+				const next = new Map(current);
+				next.delete(path);
+				return next;
+			});
 
 			try {
-				const hydrated = await ensureFile(path);
+				const hydrated = await dataSource.ensureFile(path);
 				setFiles((current) =>
 					current.map((file) => (file.path === path ? hydrated : file)),
 				);
 			} catch (error) {
-				setLoadError(
-					error instanceof Error ? error.message : "Failed to load file contents",
-				);
+				setErrors((current) => {
+					const next = new Map(current);
+					next.set(
+						path,
+						error instanceof Error
+							? error.message
+							: "Failed to load file contents",
+					);
+					return next;
+				});
 			} finally {
-				setLoadingPath(null);
+				inFlightRef.current.delete(path);
+				setLoadingPaths((current) => {
+					const next = new Set(current);
+					next.delete(path);
+					return next;
+				});
 			}
 		},
-		[ensureFile],
+		[dataSource, files],
 	);
 
-	useEffect(() => {
-		if (!selectedPath || !ensureFile) return;
-		const file = files.find((item) => item.path === selectedPath);
-		if (!needsFileLoad(file)) return;
-		// Defer so the fetch's state updates never run synchronously in
-		// the effect body (they'd cascade a render).
-		let cancelled = false;
-		queueMicrotask(() => {
-			if (!cancelled) void loadFile(selectedPath);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [selectedPath, ensureFile, files, loadFile]);
+	const handleSelect = useCallback((path: string) => {
+		setSelectedPath(path);
+		feedRef.current?.scrollToPath(path);
+	}, []);
+
+	const closeJumper = useCallback(() => setJumperOpen(false), []);
+	const handleModeChange = useCallback((next: ViewMode) => {
+		setMode(next);
+		try {
+			window.localStorage.setItem("goreview-diff-mode", next);
+		} catch {
+			// Preference persistence is best-effort.
+		}
+	}, []);
+
+	const viewedCount = useMemo(
+		() => files.reduce((count, file) => count + (viewed.has(file.path) ? 1 : 0), 0),
+		[files, viewed],
+	);
 
 	useEffect(() => {
 		const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -117,20 +156,6 @@ function ReviewWorkspace({
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, []);
-
-	const handleSelect = useCallback((path: string) => {
-		setSelectedPath(path);
-		setLoadError(null);
-	}, []);
-
-	const closeJumper = useCallback(() => setJumperOpen(false), []);
-
-	const viewedCount = useMemo(
-		() => files.reduce((count, file) => count + (viewed.has(file.path) ? 1 : 0), 0),
-		[files, viewed],
-	);
-
-	const isLoadingFile = loadingPath !== null && loadingPath === selectedPath;
 
 	return (
 		<div className="review-workspace">
@@ -156,6 +181,10 @@ function ReviewWorkspace({
 					files={files}
 					selectedPath={selectedPath}
 					onSelect={handleSelect}
+					statusFilter={statusFilter}
+					categoryFilter={categoryFilter}
+					onStatusFilterChange={setStatusFilter}
+					onCategoryFilterChange={setCategoryFilter}
 					viewed={viewed}
 				/>
 			</aside>
@@ -170,68 +199,26 @@ function ReviewWorkspace({
 						Jump to file
 						<kbd className="jumper-trigger__kbd">⌘K</kbd>
 					</button>
+					<span className="review-workspace__current-path">
+						{selectedPath ?? "No file selected"}
+					</span>
 					<ThemeToggle />
 				</div>
 
 				<div className="review-workspace__content">
-					<div className="review-scroll">
-						<ReviewMeta snapshot={{ ...snapshot, files }} />
-
-						{selectedFile ? (
-							<div key={selectedPath} className="review-scroll__body">
-								<div className="review-scroll__file">
-									<div className="review-scroll__file-info">
-										<p
-											className="review-scroll__status"
-											data-status={selectedFile.status}
-										>
-											{selectedFile.status}
-											{selectedFile.oldPath
-												? ` from ${selectedFile.oldPath}`
-												: ""}
-										</p>
-										<h2 className="review-scroll__path">{selectedFile.path}</h2>
-									</div>
-									<label className="viewed-toggle">
-										<input
-											type="checkbox"
-											checked={viewed.has(selectedFile.path)}
-											onChange={() => toggleViewed(selectedFile.path)}
-										/>
-										<span>Viewed</span>
-									</label>
-								</div>
-
-								{loadError ? (
-									<p className="panel-fallback">{loadError}</p>
-								) : isLoadingFile ? (
-									<p className="panel-fallback">Loading file contents…</p>
-								) : (
-									<>
-										<Suspense
-											fallback={
-												<div className="panel-fallback">Loading comparison…</div>
-											}
-										>
-											<DiffViewer file={selectedFile} />
-										</Suspense>
-
-										<Suspense
-											fallback={
-												<div className="panel-fallback">Loading changes…</div>
-											}
-										>
-											<ExplanationList explanations={explanations} />
-										</Suspense>
-									</>
-								)}
-							</div>
-						) : (
-							<div className="review-workspace__empty">
-								<p>Select a file from the comparison tree to review changes.</p>
-							</div>
-						)}
-					</div>
+					<ReviewFeed
+						ref={feedRef}
+						snapshot={{ ...snapshot, files }}
+						files={orderedFiles}
+						mode={mode}
+						viewed={viewed}
+						loadingPaths={loadingPaths}
+						errors={errors}
+						onModeChange={handleModeChange}
+						onVisiblePath={setSelectedPath}
+						onNeedFile={(path) => void loadFile(path)}
+						onToggleViewed={toggleViewed}
+					/>
 				</div>
 			</main>
 
@@ -239,7 +226,10 @@ function ReviewWorkspace({
 				open={jumperOpen}
 				files={files}
 				onClose={closeJumper}
-				onSelect={handleSelect}
+				onSelect={(path) => {
+					handleSelect(path);
+					closeJumper();
+				}}
 			/>
 		</div>
 	);

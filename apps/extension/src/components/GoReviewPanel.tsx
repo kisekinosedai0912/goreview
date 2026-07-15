@@ -134,7 +134,7 @@ export default function GoReviewPanel({
 					>
 						<ReviewWorkspace
 							snapshot={state.snapshot}
-							ensureFile={ensureFile}
+							dataSource={{ ensureFile }}
 							source="github"
 						/>
 					</Suspense>

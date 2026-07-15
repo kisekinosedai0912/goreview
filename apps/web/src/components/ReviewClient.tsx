@@ -123,7 +123,7 @@ export default function ReviewClient({ owner, repo, number }: ReviewClientProps)
 		>
 			<ReviewWorkspace
 				snapshot={state.snapshot}
-				ensureFile={ensureFile}
+				dataSource={{ ensureFile }}
 				source="github"
 			/>
 		</Suspense>
