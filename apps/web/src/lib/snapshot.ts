@@ -6,17 +6,23 @@ import {
 import { fromPullRequest } from "@goreview/core/github";
 import type { Octokit } from "octokit";
 import { cacheGet, cacheSet, snapshotCacheKey } from "./cache";
+import { optionalEnv } from "./env";
 import { installationOctokit, userOctokit } from "./github-app";
 import { readSession } from "./session";
 
 export type SnapshotAuth =
 	| { kind: "user"; octokit: Octokit }
-	| { kind: "installation"; octokit: Octokit };
+	| { kind: "installation"; octokit: Octokit }
+	| { kind: "env"; octokit: Octokit }
+	| { kind: "anonymous"; octokit: Octokit };
 
 /**
  * Resolve an authenticated client for the repo: the signed-in user's
  * token when present (respects their permissions), otherwise the App
  * installation token (lets the webhook-driven flow and public links work).
+ * For local development, a GITHUB_TOKEN env var works too, and setting
+ * ALLOW_ANONYMOUS_GITHUB=1 serves public repos unauthenticated
+ * (60 req/h shared rate limit — do not enable in production).
  */
 export async function resolveAuth(
 	owner: string,
@@ -30,6 +36,16 @@ export async function resolveAuth(
 	const installation = await installationOctokit(owner, repo);
 	if (installation) {
 		return { kind: "installation", octokit: installation };
+	}
+
+	const envToken = optionalEnv("GITHUB_TOKEN");
+	if (envToken) {
+		return { kind: "env", octokit: userOctokit(envToken) };
+	}
+
+	if (optionalEnv("ALLOW_ANONYMOUS_GITHUB") === "1") {
+		const { Octokit } = await import("octokit");
+		return { kind: "anonymous", octokit: new Octokit() };
 	}
 
 	return null;
