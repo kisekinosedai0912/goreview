@@ -1,21 +1,28 @@
-import { memo, Suspense, useCallback, useEffect, useMemo, useState, type ComponentType, type LazyExoticComponent } from "react";
+import {
+	lazy,
+	memo,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import {
 	explainEvents,
-	groupByCategory,
 	type ChangedFile,
-	type Explanation,
 	type ReviewSnapshot,
 } from "@goreview/core";
-import FileTree from "./FileTree";
+import FileTreeCompare from "./FileTreeCompare";
 import ReviewMeta from "./ReviewMeta";
 import ThemeToggle from "./ThemeToggle";
+
+const ComparisonStack = lazy(() => import("./ComparisonStack"));
+const ExplanationList = lazy(() => import("./ExplanationList"));
 
 type ReviewWorkspaceProps = {
 	snapshot: ReviewSnapshot;
 	ensureFile?: (path: string) => Promise<ChangedFile>;
 	source?: "github" | "fixture";
-	ComparisonStack: LazyExoticComponent<ComponentType<{ file: ChangedFile }>>;
-	ExplanationList: LazyExoticComponent<ComponentType<{ explanations: Explanation[] }>>;
 };
 
 function needsFileLoad(file: ChangedFile | undefined): boolean {
@@ -27,8 +34,6 @@ function ReviewWorkspace({
 	snapshot,
 	ensureFile,
 	source = "fixture",
-	ComparisonStack,
-	ExplanationList,
 }: ReviewWorkspaceProps) {
 	const [selectedPath, setSelectedPath] = useState<string | null>(
 		snapshot.files[0]?.path ?? null,
@@ -47,8 +52,6 @@ function ReviewWorkspace({
 		setLoadingPath(null);
 		setLoadError(null);
 	}
-
-	const groups = useMemo(() => groupByCategory(files), [files]);
 
 	const selectedFile = useMemo(
 		() => files.find((file) => file.path === selectedPath) ?? null,
@@ -114,8 +117,8 @@ function ReviewWorkspace({
 						<p className="review-brand__hint">Fixture demo</p>
 					) : null}
 				</div>
-				<FileTree
-					groups={groups}
+				<FileTreeCompare
+					files={files}
 					selectedPath={selectedPath}
 					onSelect={handleSelect}
 				/>

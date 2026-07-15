@@ -1,34 +1,15 @@
-import { Suspense, useEffect, useState, type ComponentType, type LazyExoticComponent } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
 	canLoadFromGitHub,
 	loadReview,
 	type LoadReviewResult,
 } from "@/loaders/load-review";
-import type { ChangedFile, ReviewSnapshot } from "@goreview/core";
 
-type ReviewWorkspaceProps = {
-	snapshot: ReviewSnapshot;
-	ensureFile?: (path: string) => Promise<ChangedFile>;
-	source?: "github" | "fixture";
-	ComparisonStack: LazyExoticComponent<
-		ComponentType<{ file: ChangedFile }>
-	>;
-	ExplanationList: LazyExoticComponent<
-		ComponentType<{ explanations: import("@goreview/core").Explanation[] }>
-	>;
-};
+const ReviewWorkspace = lazy(
+	() => import("@goreview/ui/components/ReviewWorkspace"),
+);
 
-type ReviewAppProps = {
-	ReviewWorkspace: LazyExoticComponent<ComponentType<ReviewWorkspaceProps>>;
-	ComparisonStack: ReviewWorkspaceProps["ComparisonStack"];
-	ExplanationList: ReviewWorkspaceProps["ExplanationList"];
-};
-
-function ReviewApp({
-	ReviewWorkspace,
-	ComparisonStack,
-	ExplanationList,
-}: ReviewAppProps) {
+function ReviewApp() {
 	const [result, setResult] = useState<LoadReviewResult | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -73,8 +54,6 @@ function ReviewApp({
 				snapshot={result.snapshot}
 				ensureFile={result.ensureFile}
 				source={result.source}
-				ComparisonStack={ComparisonStack}
-				ExplanationList={ExplanationList}
 			/>
 		</Suspense>
 	);

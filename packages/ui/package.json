@@ -3,7 +3,9 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
-	"sideEffects": ["*.css"],
+	"sideEffects": [
+		"*.css"
+	],
 	"exports": {
 		".": "./src/index.ts",
 		"./styles.css": "./src/styles/index.css",
@@ -15,6 +17,7 @@
 	},
 	"dependencies": {
 		"@goreview/core": "workspace:*",
+		"@tanstack/react-virtual": "^3.14.6",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"lucide-react": "^1.24.0",
