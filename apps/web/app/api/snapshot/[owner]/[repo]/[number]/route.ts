@@ -35,16 +35,15 @@ export async function GET(
 			},
 		);
 	} catch (error) {
-		const status =
-			error instanceof Error && /Not Found/i.test(error.message) ? 404 : 502;
+		const notFound = error instanceof Error && /Not Found/i.test(error.message);
+		const message = notFound
+			? `GitHub returned 404 for ${owner}/${repo}#${number}. Private repos look like 404 when the token can't see them — sign in, set GITHUB_TOKEN, or install the GitHub App on that repo. (auth mode: ${auth.kind})`
+			: error instanceof Error
+				? error.message
+				: "Failed to load the pull request from GitHub.";
 		return NextResponse.json(
-			{
-				error:
-					error instanceof Error
-						? error.message
-						: "Failed to load the pull request from GitHub.",
-			},
-			{ status },
+			{ error: message },
+			{ status: notFound ? 404 : 502 },
 		);
 	}
 }
