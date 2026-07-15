@@ -12,9 +12,11 @@ import {
 	type ChangedFile,
 	type ReviewSnapshot,
 } from "@goreview/core";
+import FileJumper from "./FileJumper";
 import FileTreeCompare from "./FileTreeCompare";
 import ReviewMeta from "./ReviewMeta";
 import ThemeToggle from "./ThemeToggle";
+import { useViewedFiles } from "../lib/use-viewed-files";
 
 const DiffViewer = lazy(() => import("./DiffViewer"));
 const ExplanationList = lazy(() => import("./ExplanationList"));
@@ -41,6 +43,7 @@ function ReviewWorkspace({
 	const [files, setFiles] = useState(snapshot.files);
 	const [loadingPath, setLoadingPath] = useState<string | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
+	const [jumperOpen, setJumperOpen] = useState(false);
 
 	// Reset state during render when a new snapshot arrives (avoids an
 	// extra effect-driven render pass).
@@ -52,6 +55,9 @@ function ReviewWorkspace({
 		setLoadingPath(null);
 		setLoadError(null);
 	}
+
+	const reviewKey = `${snapshot.repo}#${snapshot.headSha}`;
+	const { viewed, toggleViewed } = useViewedFiles(reviewKey);
 
 	const selectedFile = useMemo(
 		() => files.find((file) => file.path === selectedPath) ?? null,
@@ -101,10 +107,28 @@ function ReviewWorkspace({
 		};
 	}, [selectedPath, ensureFile, files, loadFile]);
 
+	useEffect(() => {
+		const onKeyDown = (event: globalThis.KeyboardEvent) => {
+			if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+				event.preventDefault();
+				setJumperOpen((open) => !open);
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, []);
+
 	const handleSelect = useCallback((path: string) => {
 		setSelectedPath(path);
 		setLoadError(null);
 	}, []);
+
+	const closeJumper = useCallback(() => setJumperOpen(false), []);
+
+	const viewedCount = useMemo(
+		() => files.reduce((count, file) => count + (viewed.has(file.path) ? 1 : 0), 0),
+		[files, viewed],
+	);
 
 	const isLoadingFile = loadingPath !== null && loadingPath === selectedPath;
 
@@ -117,15 +141,35 @@ function ReviewWorkspace({
 						<p className="review-brand__hint">Fixture demo</p>
 					) : null}
 				</div>
+				<div className="review-progress" role="status">
+					<div
+						className="review-progress__bar"
+						style={{
+							width: `${files.length === 0 ? 0 : Math.round((viewedCount / files.length) * 100)}%`,
+						}}
+					/>
+					<span className="review-progress__label">
+						{viewedCount}/{files.length} viewed
+					</span>
+				</div>
 				<FileTreeCompare
 					files={files}
 					selectedPath={selectedPath}
 					onSelect={handleSelect}
+					viewed={viewed}
 				/>
 			</aside>
 
 			<main className="review-workspace__main">
 				<div className="review-workspace__toolbar">
+					<button
+						type="button"
+						className="jumper-trigger"
+						onClick={() => setJumperOpen(true)}
+					>
+						Jump to file
+						<kbd className="jumper-trigger__kbd">⌘K</kbd>
+					</button>
 					<ThemeToggle />
 				</div>
 
@@ -136,13 +180,26 @@ function ReviewWorkspace({
 						{selectedFile ? (
 							<div key={selectedPath} className="review-scroll__body">
 								<div className="review-scroll__file">
-									<p
-										className="review-scroll__status"
-										data-status={selectedFile.status}
-									>
-										{selectedFile.status}
-									</p>
-									<h2 className="review-scroll__path">{selectedFile.path}</h2>
+									<div className="review-scroll__file-info">
+										<p
+											className="review-scroll__status"
+											data-status={selectedFile.status}
+										>
+											{selectedFile.status}
+											{selectedFile.oldPath
+												? ` from ${selectedFile.oldPath}`
+												: ""}
+										</p>
+										<h2 className="review-scroll__path">{selectedFile.path}</h2>
+									</div>
+									<label className="viewed-toggle">
+										<input
+											type="checkbox"
+											checked={viewed.has(selectedFile.path)}
+											onChange={() => toggleViewed(selectedFile.path)}
+										/>
+										<span>Viewed</span>
+									</label>
 								</div>
 
 								{loadError ? (
@@ -177,6 +234,13 @@ function ReviewWorkspace({
 					</div>
 				</div>
 			</main>
+
+			<FileJumper
+				open={jumperOpen}
+				files={files}
+				onClose={closeJumper}
+				onSelect={handleSelect}
+			/>
 		</div>
 	);
 }

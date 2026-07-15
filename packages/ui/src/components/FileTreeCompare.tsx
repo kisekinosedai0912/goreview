@@ -36,6 +36,8 @@ type FileTreeCompareProps = {
 	files: ChangedFile[];
 	selectedPath: string | null;
 	onSelect: (path: string) => void;
+	/** Paths the reviewer marked as viewed; rendered dimmed with a check. */
+	viewed?: ReadonlySet<string>;
 };
 
 const STATUS_GLYPHS: Record<FileStatus, string> = {
@@ -69,7 +71,12 @@ function fileToLeaf(file: ChangedFile): FileTreeLeaf {
 	};
 }
 
-function FileTreeCompare({ files, selectedPath, onSelect }: FileTreeCompareProps) {
+function FileTreeCompare({
+	files,
+	selectedPath,
+	onSelect,
+	viewed,
+}: FileTreeCompareProps) {
 	const [groupMode, setGroupMode] = useState<GroupMode>("directory");
 	const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
 	const [statusFilter, setStatusFilter] = useState<ReadonlySet<FileStatus>>(
@@ -429,6 +436,7 @@ function FileTreeCompare({ files, selectedPath, onSelect }: FileTreeCompareProps
 											data-selected={
 												selectedPath === row.node.path || undefined
 											}
+											data-viewed={viewed?.has(row.node.path) || undefined}
 											style={{ paddingLeft: row.depth * 14 + 8 }}
 											onClick={() => {
 												setActiveIndex(virtualRow.index);
