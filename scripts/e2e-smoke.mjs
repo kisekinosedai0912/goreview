@@ -13,8 +13,9 @@
  * Verifies:
  *   1. /api/snapshot serves a schema-valid snapshot for a real public PR
  *   2. /api/snapshot/.../file hydrates a single file with a computed diff
- *   3. /api/webhooks/github accepts a correctly signed ping
- *   4. /api/webhooks/github rejects a bad signature with 401
+ *   3. /api/reviews/.../intelligence serves the no-AI deterministic fallback
+ *   4. /api/webhooks/github accepts a correctly signed ping
+ *   5. /api/webhooks/github rejects a bad signature with 401
  */
 
 import { createHmac } from "node:crypto";
@@ -57,7 +58,25 @@ function check(name, condition, detail = "") {
 	}
 }
 
-// 3: correctly signed webhook ping
+// 3: deterministic intelligence never needs Gateway credentials
+{
+	const response = await fetch(
+		`${BASE}/api/reviews/${TARGET.owner}/${TARGET.repo}/${TARGET.number}/intelligence`,
+	);
+	const body = await response.json();
+	check(
+		"deterministic intelligence responds 200",
+		response.status === 200,
+		`status ${response.status}`,
+	);
+	check(
+		"intelligence has local fallback",
+		body?.intelligence?.source === "deterministic",
+	);
+	check("intelligence reports AI availability", typeof body?.aiAvailable === "boolean");
+}
+
+// 4: correctly signed webhook ping
 {
 	const payload = JSON.stringify({ zen: "Keep it logically awesome." });
 	const signature = `sha256=${createHmac("sha256", WEBHOOK_SECRET).update(payload).digest("hex")}`;
@@ -73,7 +92,7 @@ function check(name, condition, detail = "") {
 	check("signed ping accepted", response.status === 200, `status ${response.status}`);
 }
 
-// 4: bad signature rejected
+// 5: bad signature rejected
 {
 	const payload = JSON.stringify({ zen: "nope" });
 	const response = await fetch(`${BASE}/api/webhooks/github`, {

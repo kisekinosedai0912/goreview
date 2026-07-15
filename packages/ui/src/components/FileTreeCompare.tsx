@@ -158,6 +158,9 @@ function FileTreeCompare({
 		return result;
 	}, [groupMode, filteredFiles, collapsed]);
 
+	// TanStack Virtual intentionally returns a mutable instance; React Compiler
+	// skips this component while the virtualizer handles its own memoization.
+	// eslint-disable-next-line react-hooks/incompatible-library
 	const virtualizer = useVirtualizer({
 		count: rows.length,
 		getScrollElement: () => scrollRef.current,

@@ -9,6 +9,8 @@
 		"build": "turbo build",
 		"typecheck": "turbo typecheck",
 		"test": "turbo test",
+		"test:smoke": "node scripts/e2e-smoke.mjs",
+		"test:real-pr": "node scripts/e2e-real-pr-comment.mjs",
 		"lint": "eslint ."
 	},
 	"devDependencies": {

@@ -125,7 +125,7 @@ describe("deterministic review intelligence", () => {
 		const chunks = buildReviewPromptChunks(snapshot, 500);
 		expect(chunks.length).toBeGreaterThan(0);
 		expect(chunks.every((chunk) => chunk.text.length <= 1_000)).toBe(true);
-		expect(chunks.some((chunk) => /\b[LR]\d+ [ +\-]/.test(chunk.text))).toBe(
+		expect(chunks.some((chunk) => /\b[LR]\d+ [-+ ]/.test(chunk.text))).toBe(
 			true,
 		);
 	});
