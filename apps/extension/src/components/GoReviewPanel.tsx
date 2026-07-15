@@ -1,9 +1,21 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { browser } from "#imports";
 import {
 	changedFileSchema,
+	commentThreadSchema,
+	reviewCommentSchema,
 	reviewSnapshotSchema,
+	type CreateCommentInput,
 	type ChangedFile,
+	type ReplyToCommentInput,
+	type ReviewDataSource,
 	type ReviewSnapshot,
 } from "@goreview/core";
 import type { BackendResponse, ExtensionMessage } from "../lib/messages";
@@ -80,17 +92,68 @@ export default function GoReviewPanel({
 		};
 	}, [owner, repo, number]);
 
-	const ensureFile = async (path: string): Promise<ChangedFile> => {
-		const response = await sendMessage({
-			type: "goreview:file",
-			owner,
-			repo,
-			number,
-			path,
-		});
-		if (!response.ok) throw new Error(response.error);
-		return changedFileSchema.parse((response.data as { file: unknown }).file);
-	};
+	const ensureFile = useCallback(
+		async (path: string): Promise<ChangedFile> => {
+			const response = await sendMessage({
+				type: "goreview:file",
+				owner,
+				repo,
+				number,
+				path,
+			});
+			if (!response.ok) throw new Error(response.error);
+			return changedFileSchema.parse((response.data as { file: unknown }).file);
+		},
+		[number, owner, repo],
+	);
+
+	const dataSource = useMemo<ReviewDataSource>(
+		() => ({
+			ensureFile,
+			async listCommentThreads() {
+				const response = await sendMessage({
+					type: "goreview:comments:list",
+					owner,
+					repo,
+					number,
+				});
+				if (!response.ok) throw new Error(response.error);
+				return (response.data as { threads: unknown[] }).threads.map((thread) =>
+					commentThreadSchema.parse(thread),
+				);
+			},
+			async createComment(input: CreateCommentInput) {
+				if (state.phase !== "ready") throw new Error("Review is not loaded.");
+				const response = await sendMessage({
+					type: "goreview:comments:create",
+					owner,
+					repo,
+					number,
+					...input,
+					expectedHeadSha: state.snapshot.headSha,
+				});
+				if (!response.ok) throw new Error(response.error);
+				return reviewCommentSchema.parse(
+					(response.data as { comment: unknown }).comment,
+				);
+			},
+			async replyToComment(input: ReplyToCommentInput) {
+				const response = await sendMessage({
+					type: "goreview:comments:reply",
+					owner,
+					repo,
+					number,
+					rootId: input.rootId,
+					body: input.body,
+				});
+				if (!response.ok) throw new Error(response.error);
+				return reviewCommentSchema.parse(
+					(response.data as { comment: unknown }).comment,
+				);
+			},
+		}),
+		[ensureFile, number, owner, repo, state],
+	);
 
 	return (
 		<div className="goreview-root">
@@ -134,7 +197,7 @@ export default function GoReviewPanel({
 					>
 						<ReviewWorkspace
 							snapshot={state.snapshot}
-							dataSource={{ ensureFile }}
+							dataSource={dataSource}
 							source="github"
 						/>
 					</Suspense>

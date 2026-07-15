@@ -7,12 +7,20 @@ import { getBackendUrl } from "../lib/settings";
  * permissions, so cookies for the goreview deployment are sent even
  * though the request originates from a github.com page.
  */
-async function callBackend(path: string): Promise<BackendResponse> {
+async function callBackend(
+	path: string,
+	init?: RequestInit,
+): Promise<BackendResponse> {
 	const base = await getBackendUrl();
 	try {
 		const response = await fetch(`${base}${path}`, {
 			credentials: "include",
-			headers: { Accept: "application/json" },
+			...init,
+			headers: {
+				Accept: "application/json",
+				"Content-Type": "application/json",
+				...(init?.headers ?? {}),
+			},
 		});
 		const data: unknown = await response.json().catch(() => null);
 
@@ -49,6 +57,32 @@ export default defineBackground(() => {
 					case "goreview:file":
 						return callBackend(
 							`/api/snapshot/${message.owner}/${message.repo}/${message.number}/file?path=${encodeURIComponent(message.path)}`,
+						);
+					case "goreview:comments:list":
+						return callBackend(
+							`/api/reviews/${message.owner}/${message.repo}/${message.number}/comments`,
+						);
+					case "goreview:comments:create":
+						return callBackend(
+							`/api/reviews/${message.owner}/${message.repo}/${message.number}/comments`,
+							{
+								method: "POST",
+								headers: { "x-goreview-action": "comment" },
+								body: JSON.stringify({
+									anchor: message.anchor,
+									body: message.body,
+									expectedHeadSha: message.expectedHeadSha,
+								}),
+							},
+						);
+					case "goreview:comments:reply":
+						return callBackend(
+							`/api/reviews/${message.owner}/${message.repo}/${message.number}/comments/${message.rootId}/replies`,
+							{
+								method: "POST",
+								headers: { "x-goreview-action": "comment" },
+								body: JSON.stringify({ body: message.body }),
+							},
 						);
 				}
 			};

@@ -7,16 +7,23 @@ import {
 } from "react";
 import type {
 	ChangedFile,
+	CommentAnchor,
+	CommentThread,
+	CreateCommentInput,
 	DiffHunk,
 	DiffLine,
 	DiffSegment,
+	ReplyToCommentInput,
+	ReviewComment,
 } from "@goreview/core";
+import { anchorsForDiffLine } from "@goreview/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	useAppTheme,
 	useHighlightedFile,
 } from "../highlight/use-highlighted";
 import type { TokenLine, TokenSpan } from "../highlight/types";
+import InlineComments from "./review/InlineComments";
 
 export type ViewMode = "unified" | "split";
 
@@ -30,8 +37,14 @@ type DiffRow =
 			hiddenLines: number;
 	  }
 	| { type: "gap"; key: string; gapIndex: number; count: number }
-	| { type: "line"; key: string; line: DiffLine }
-	| { type: "pair"; key: string; left: DiffLine | null; right: DiffLine | null };
+	| { type: "line"; key: string; line: DiffLine; commentable: boolean }
+	| {
+			type: "pair";
+			key: string;
+			left: DiffLine | null;
+			right: DiffLine | null;
+			commentable: boolean;
+	  };
 
 type DiffViewerProps = {
 	file: ChangedFile;
@@ -39,6 +52,9 @@ type DiffViewerProps = {
 	onModeChange?: (mode: ViewMode) => void;
 	/** Render into the parent's scroll flow instead of creating a nested scroller. */
 	continuous?: boolean;
+	commentThreads?: CommentThread[];
+	onCreateComment?: (input: CreateCommentInput) => Promise<ReviewComment>;
+	onReplyToComment?: (input: ReplyToCommentInput) => Promise<ReviewComment>;
 };
 
 const LINE_HEIGHT = 24;
@@ -114,6 +130,9 @@ function DiffViewer({
 	mode: controlledMode,
 	onModeChange,
 	continuous = false,
+	commentThreads = [],
+	onCreateComment,
+	onReplyToComment,
 }: DiffViewerProps) {
 	const [localMode, setLocalMode] = useState<ViewMode>("split");
 	const mode = controlledMode ?? localMode;
@@ -176,13 +195,19 @@ function DiffViewer({
 					content: contextSource[n - 1] ?? "",
 				};
 				if (mode === "unified") {
-					result.push({ type: "line", key: `ctx:${gapIndex}:${n}`, line });
+					result.push({
+						type: "line",
+						key: `ctx:${gapIndex}:${n}`,
+						line,
+						commentable: false,
+					});
 				} else {
 					result.push({
 						type: "pair",
 						key: `ctx:${gapIndex}:${n}`,
 						left: line,
 						right: line,
+						commentable: false,
 					});
 				}
 			}
@@ -209,6 +234,7 @@ function DiffViewer({
 						type: "line",
 						key: `l:${hunkIndex}:${i}`,
 						line: hunk.lines[i]!,
+						commentable: true,
 					});
 				}
 			} else {
@@ -219,6 +245,7 @@ function DiffViewer({
 						key: `p:${hunkIndex}:${i}`,
 						left: pairs[i]!.left,
 						right: pairs[i]!.right,
+						commentable: true,
 					});
 				}
 			}
@@ -279,19 +306,38 @@ function DiffViewer({
 				</button>
 			) : row.type === "line" ? (
 				<UnifiedLine
+					path={file.path}
 					line={row.line}
+					commentable={row.commentable}
 					oldTokens={oldTokens}
 					newTokens={newTokens}
+					threads={commentThreads}
+					onCreateComment={onCreateComment}
+					onReplyToComment={onReplyToComment}
 				/>
 			) : (
 				<SplitPair
+					path={file.path}
 					left={row.left}
 					right={row.right}
+					commentable={row.commentable}
 					oldTokens={oldTokens}
 					newTokens={newTokens}
+					threads={commentThreads}
+					onCreateComment={onCreateComment}
+					onReplyToComment={onReplyToComment}
 				/>
 			),
-		[expandGap, newTokens, oldTokens, toggleHunk],
+		[
+			commentThreads,
+			expandGap,
+			file.path,
+			newTokens,
+			oldTokens,
+			onCreateComment,
+			onReplyToComment,
+			toggleHunk,
+		],
 	);
 
 	if (!file.diff) {
@@ -393,6 +439,30 @@ type LineTokensProps = {
 	oldTokens: TokenLine[] | null;
 	newTokens: TokenLine[] | null;
 };
+
+type CommentableLineProps = {
+	path: string;
+	commentable: boolean;
+	threads: CommentThread[];
+	onCreateComment?: (input: CreateCommentInput) => Promise<ReviewComment>;
+	onReplyToComment?: (input: ReplyToCommentInput) => Promise<ReviewComment>;
+};
+
+function threadsAtAnchors(
+	threads: CommentThread[],
+	anchors: CommentAnchor[],
+): CommentThread[] {
+	const keys = new Set(
+		anchors.map((anchor) => `${anchor.path}:${anchor.side}:${anchor.line}`),
+	);
+	return threads.filter(
+		(thread) =>
+			thread.anchor &&
+			keys.has(
+				`${thread.anchor.path}:${thread.anchor.side}:${thread.anchor.line}`,
+			),
+	);
+}
 
 function tokensForLine(
 	line: DiffLine,
@@ -516,71 +586,118 @@ const LineContent = memo(function LineContent({
 });
 
 const UnifiedLine = memo(function UnifiedLine({
+	path,
+	commentable,
 	line,
 	oldTokens,
 	newTokens,
-}: LineTokensProps) {
+	threads,
+	onCreateComment,
+	onReplyToComment,
+}: LineTokensProps & CommentableLineProps) {
+	const anchors = commentable
+		? anchorsForDiffLine(path, line).filter(
+				(anchor) => line.type !== "context" || anchor.side === "RIGHT",
+			)
+		: [];
 	return (
-		<div className="diff-line" data-type={line.type}>
-			<span className="diff-line__gutter">{line.oldNumber ?? ""}</span>
-			<span className="diff-line__gutter">{line.newNumber ?? ""}</span>
-			<span className="diff-line__marker" aria-hidden="true">
-				{line.type === "added" ? "+" : line.type === "removed" ? "−" : ""}
-			</span>
-			<LineContent line={line} oldTokens={oldTokens} newTokens={newTokens} />
+		<div className="diff-line-block">
+			<div className="diff-line" data-type={line.type}>
+				<span className="diff-line__gutter">{line.oldNumber ?? ""}</span>
+				<span className="diff-line__gutter">{line.newNumber ?? ""}</span>
+				<span className="diff-line__marker" aria-hidden="true">
+					{line.type === "added" ? "+" : line.type === "removed" ? "−" : ""}
+				</span>
+				<LineContent line={line} oldTokens={oldTokens} newTokens={newTokens} />
+			</div>
+			<InlineComments
+				anchors={anchors}
+				threads={threadsAtAnchors(threads, anchors)}
+				onCreate={onCreateComment}
+				onReply={onReplyToComment}
+			/>
 		</div>
 	);
 });
 
 const SplitPair = memo(function SplitPair({
+	path,
+	commentable,
 	left,
 	right,
 	oldTokens,
 	newTokens,
+	threads,
+	onCreateComment,
+	onReplyToComment,
 }: {
+	path: string;
+	commentable: boolean;
 	left: DiffLine | null;
 	right: DiffLine | null;
 	oldTokens: TokenLine[] | null;
 	newTokens: TokenLine[] | null;
-}) {
+} & Omit<CommentableLineProps, "path">) {
+	const anchors = commentable
+		? [
+				...(left
+					? anchorsForDiffLine(path, left).filter(
+							(anchor) => anchor.side === "LEFT",
+						)
+					: []),
+				...(right
+					? anchorsForDiffLine(path, right).filter(
+							(anchor) => anchor.side === "RIGHT",
+						)
+					: []),
+			]
+		: [];
 	return (
-		<div className="diff-pair">
-			<div
-				className="diff-line diff-line--half"
-				data-type={left ? (left.type === "context" ? "context" : "removed") : "spacer"}
-			>
-				{left ? (
-					<>
-						<span className="diff-line__gutter">{left.oldNumber ?? ""}</span>
-						<span className="diff-line__marker" aria-hidden="true">
-							{left.type === "removed" ? "−" : ""}
-						</span>
-						<LineContent
-							line={left}
-							oldTokens={oldTokens}
-							newTokens={left.type === "context" ? newTokens : null}
-						/>
-					</>
-				) : null}
+		<div className="diff-line-block">
+			<div className="diff-pair">
+				<div
+					className="diff-line diff-line--half"
+					data-type={left ? (left.type === "context" ? "context" : "removed") : "spacer"}
+				>
+					{left ? (
+						<>
+							<span className="diff-line__gutter">{left.oldNumber ?? ""}</span>
+							<span className="diff-line__marker" aria-hidden="true">
+								{left.type === "removed" ? "−" : ""}
+							</span>
+							<LineContent
+								line={left}
+								oldTokens={oldTokens}
+								newTokens={left.type === "context" ? newTokens : null}
+							/>
+						</>
+					) : null}
+				</div>
+				<div
+					className="diff-line diff-line--half"
+					data-type={right ? (right.type === "context" ? "context" : "added") : "spacer"}
+				>
+					{right ? (
+						<>
+							<span className="diff-line__gutter">{right.newNumber ?? ""}</span>
+							<span className="diff-line__marker" aria-hidden="true">
+								{right.type === "added" ? "+" : ""}
+							</span>
+							<LineContent
+								line={right}
+								oldTokens={oldTokens}
+								newTokens={newTokens}
+							/>
+						</>
+					) : null}
+				</div>
 			</div>
-			<div
-				className="diff-line diff-line--half"
-				data-type={right ? (right.type === "context" ? "context" : "added") : "spacer"}
-			>
-				{right ? (
-					<>
-						<span className="diff-line__gutter">{right.newNumber ?? ""}</span>
-						<span className="diff-line__marker" aria-hidden="true">
-							{right.type === "added" ? "+" : ""}
-						</span>
-						<LineContent
-							line={right}
-							oldTokens={oldTokens}
-							newTokens={newTokens}
-						/>
-					</>
-				) : null}
-			</div>
+			<InlineComments
+				anchors={anchors}
+				threads={threadsAtAnchors(threads, anchors)}
+				onCreate={onCreateComment}
+				onReply={onReplyToComment}
+			/>
 		</div>
 	);
 });

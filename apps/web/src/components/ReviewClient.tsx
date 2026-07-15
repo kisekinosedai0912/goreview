@@ -1,10 +1,22 @@
 "use client";
 
-import { lazy, Suspense, useEffect, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import {
 	changedFileSchema,
+	commentThreadSchema,
+	reviewCommentSchema,
 	reviewSnapshotSchema,
+	type CreateCommentInput,
 	type ChangedFile,
+	type ReplyToCommentInput,
+	type ReviewDataSource,
 	type ReviewSnapshot,
 } from "@goreview/core";
 
@@ -22,6 +34,105 @@ type LoadState =
 	| { phase: "loading" }
 	| { phase: "error"; message: string; unauthorized: boolean }
 	| { phase: "ready"; snapshot: ReviewSnapshot };
+
+function ReadyReview({
+	owner,
+	repo,
+	number,
+	snapshot,
+}: ReviewClientProps & { snapshot: ReviewSnapshot }) {
+	const ensureFile = useCallback(
+		async (path: string): Promise<ChangedFile> => {
+			const response = await fetch(
+				`/api/snapshot/${owner}/${repo}/${number}/file?path=${encodeURIComponent(path)}`,
+				{ credentials: "include" },
+			);
+			const body: unknown = await response.json();
+			if (!response.ok) {
+				const message =
+					typeof body === "object" && body !== null && "error" in body
+						? String((body as { error: unknown }).error)
+						: "Failed to load file";
+				throw new Error(message);
+			}
+			return changedFileSchema.parse((body as { file: unknown }).file);
+		},
+		[owner, repo, number],
+	);
+
+	const request = useCallback(
+		async (url: string, init?: RequestInit): Promise<unknown> => {
+			const response = await fetch(url, {
+				credentials: "include",
+				...init,
+				headers: {
+					"Content-Type": "application/json",
+					...(init?.headers ?? {}),
+				},
+			});
+			const body: unknown = await response.json();
+			if (!response.ok) {
+				const message =
+					typeof body === "object" && body !== null && "error" in body
+						? String((body as { error: unknown }).error)
+						: `Request failed (${response.status})`;
+				throw new Error(message);
+			}
+			return body;
+		},
+		[],
+	);
+
+	const dataSource = useMemo<ReviewDataSource>(
+		() => ({
+			ensureFile,
+			async listCommentThreads() {
+				const body = (await request(
+					`/api/reviews/${owner}/${repo}/${number}/comments`,
+				)) as { threads: unknown[] };
+				return body.threads.map((thread) => commentThreadSchema.parse(thread));
+			},
+			async createComment(input: CreateCommentInput) {
+				const body = (await request(
+					`/api/reviews/${owner}/${repo}/${number}/comments`,
+					{
+						method: "POST",
+						headers: { "x-goreview-action": "comment" },
+						body: JSON.stringify({
+							...input,
+							expectedHeadSha: snapshot.headSha,
+						}),
+					},
+				)) as { comment: unknown };
+				return reviewCommentSchema.parse(body.comment);
+			},
+			async replyToComment(input: ReplyToCommentInput) {
+				const body = (await request(
+					`/api/reviews/${owner}/${repo}/${number}/comments/${input.rootId}/replies`,
+					{
+						method: "POST",
+						headers: { "x-goreview-action": "comment" },
+						body: JSON.stringify({ body: input.body }),
+					},
+				)) as { comment: unknown };
+				return reviewCommentSchema.parse(body.comment);
+			},
+		}),
+		[ensureFile, number, owner, repo, request, snapshot.headSha],
+	);
+
+	return (
+		<Suspense
+			fallback={<div className="app-shell__fallback">Loading workspace…</div>}
+		>
+			<ReviewWorkspace
+				snapshot={snapshot}
+				dataSource={dataSource}
+				source="github"
+			/>
+		</Suspense>
+	);
+}
 
 export default function ReviewClient({ owner, repo, number }: ReviewClientProps) {
 	const [state, setState] = useState<LoadState>({ phase: "loading" });
@@ -101,31 +212,12 @@ export default function ReviewClient({ owner, repo, number }: ReviewClientProps)
 		);
 	}
 
-	const ensureFile = async (path: string): Promise<ChangedFile> => {
-		const response = await fetch(
-			`/api/snapshot/${owner}/${repo}/${number}/file?path=${encodeURIComponent(path)}`,
-			{ credentials: "include" },
-		);
-		const body: unknown = await response.json();
-		if (!response.ok) {
-			const message =
-				typeof body === "object" && body !== null && "error" in body
-					? String((body as { error: unknown }).error)
-					: "Failed to load file";
-			throw new Error(message);
-		}
-		return changedFileSchema.parse((body as { file: unknown }).file);
-	};
-
 	return (
-		<Suspense
-			fallback={<div className="app-shell__fallback">Loading workspace…</div>}
-		>
-			<ReviewWorkspace
-				snapshot={state.snapshot}
-				dataSource={{ ensureFile }}
-				source="github"
-			/>
-		</Suspense>
+		<ReadyReview
+			owner={owner}
+			repo={repo}
+			number={number}
+			snapshot={state.snapshot}
+		/>
 	);
 }

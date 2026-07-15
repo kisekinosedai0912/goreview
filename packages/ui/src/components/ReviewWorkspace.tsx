@@ -10,6 +10,10 @@ import {
 	getOrderedFiles,
 	type ChangeCategory,
 	type ChangedFile,
+	type CommentThread,
+	type CreateCommentInput,
+	type ReplyToCommentInput,
+	type ReviewComment,
 	type ReviewDataSource,
 	type ReviewSnapshot,
 } from "@goreview/core";
@@ -60,6 +64,7 @@ function ReviewWorkspace({
 		ReadonlySet<ChangeCategory>
 	>(new Set());
 	const [mode, setMode] = useState<ViewMode>(storedViewMode);
+	const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
 	const feedRef = useRef<ReviewFeedHandle | null>(null);
 	const inFlightRef = useRef(new Set<string>());
 
@@ -70,6 +75,7 @@ function ReviewWorkspace({
 		setSelectedPath(getOrderedFiles(snapshot.files)[0]?.path ?? null);
 		setLoadingPaths(new Set());
 		setErrors(new Map());
+		setCommentThreads([]);
 		inFlightRef.current.clear();
 	}
 
@@ -141,6 +147,125 @@ function ReviewWorkspace({
 		}
 	}, []);
 
+	const mergeComment = useCallback((comment: ReviewComment) => {
+		setCommentThreads((current) => {
+			const existing = current.find(
+				(thread) => thread.rootId === comment.threadRootId,
+			);
+			if (!existing) {
+				return [
+					...current,
+					{
+						rootId: comment.threadRootId,
+						anchor: comment.anchor,
+						path: comment.anchor?.path ?? "",
+						comments: [comment],
+					},
+				];
+			}
+			return current.map((thread) =>
+				thread.rootId === comment.threadRootId
+					? { ...thread, comments: [...thread.comments, comment] }
+					: thread,
+			);
+		});
+	}, []);
+
+	const replaceComment = useCallback(
+		(temporaryId: number, comment: ReviewComment) => {
+			setCommentThreads((current) =>
+				current.map((thread) => ({
+					...thread,
+					comments: thread.comments.map((candidate) =>
+						candidate.id === temporaryId ? comment : candidate,
+					),
+				})),
+			);
+		},
+		[],
+	);
+
+	const removeComment = useCallback((id: number) => {
+		setCommentThreads((current) =>
+			current
+				.map((thread) => ({
+					...thread,
+					comments: thread.comments.filter((comment) => comment.id !== id),
+				}))
+				.filter((thread) => thread.comments.length > 0),
+		);
+	}, []);
+
+	const createComment = useCallback(
+		async (input: CreateCommentInput) => {
+			if (!dataSource?.createComment) {
+				throw new Error("Sign in with GitHub to comment.");
+			}
+			const temporaryId = -Date.now();
+			const optimistic: ReviewComment = {
+				id: temporaryId,
+				threadRootId: temporaryId,
+				anchor: input.anchor,
+				body: input.body,
+				author: "you",
+				createdAt: new Date().toISOString(),
+				outdated: false,
+			};
+			mergeComment(optimistic);
+			try {
+				const comment = await dataSource.createComment(input);
+				setCommentThreads((current) =>
+					current.map((thread) =>
+						thread.rootId === temporaryId
+							? {
+									...thread,
+									rootId: comment.threadRootId,
+									anchor: comment.anchor,
+									path: comment.anchor?.path ?? thread.path,
+									comments: thread.comments.map((candidate) =>
+										candidate.id === temporaryId ? comment : candidate,
+									),
+								}
+							: thread,
+					),
+				);
+				return comment;
+			} catch (error) {
+				removeComment(temporaryId);
+				throw error;
+			}
+		},
+		[dataSource, mergeComment, removeComment],
+	);
+
+	const replyToComment = useCallback(
+		async (input: ReplyToCommentInput) => {
+			if (!dataSource?.replyToComment) {
+				throw new Error("Sign in with GitHub to reply.");
+			}
+			const temporaryId = -Date.now();
+			const optimistic: ReviewComment = {
+				id: temporaryId,
+				threadRootId: input.rootId,
+				anchor: null,
+				body: input.body,
+				author: "you",
+				createdAt: new Date().toISOString(),
+				outdated: false,
+			};
+			mergeComment(optimistic);
+			try {
+				const comment = await dataSource.replyToComment(input);
+				replaceComment(temporaryId, comment);
+				return comment;
+			} catch (error) {
+				removeComment(temporaryId);
+				throw error;
+			}
+		},
+		[dataSource, mergeComment, removeComment, replaceComment],
+	);
+
 	const viewedCount = useMemo(
 		() => files.reduce((count, file) => count + (viewed.has(file.path) ? 1 : 0), 0),
 		[files, viewed],
@@ -156,6 +281,22 @@ function ReviewWorkspace({
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, []);
+
+	useEffect(() => {
+		if (!dataSource?.listCommentThreads) return;
+		let cancelled = false;
+		void dataSource
+			.listCommentThreads()
+			.then((threads) => {
+				if (!cancelled) setCommentThreads(threads);
+			})
+			.catch(() => {
+				// Diffs remain usable if comments cannot be loaded.
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [dataSource]);
 
 	return (
 		<div className="review-workspace">
@@ -218,6 +359,13 @@ function ReviewWorkspace({
 						onVisiblePath={setSelectedPath}
 						onNeedFile={(path) => void loadFile(path)}
 						onToggleViewed={toggleViewed}
+						commentThreads={commentThreads}
+						onCreateComment={
+							dataSource?.createComment ? createComment : undefined
+						}
+						onReplyToComment={
+							dataSource?.replyToComment ? replyToComment : undefined
+						}
 					/>
 				</div>
 			</main>

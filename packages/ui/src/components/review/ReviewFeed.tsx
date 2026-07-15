@@ -11,6 +11,10 @@ import {
 import {
 	explainEvents,
 	type ChangedFile,
+	type CommentThread,
+	type CreateCommentInput,
+	type ReplyToCommentInput,
+	type ReviewComment,
 	type ReviewSnapshot,
 } from "@goreview/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -35,6 +39,9 @@ type ReviewFeedProps = {
 	onVisiblePath: (path: string) => void;
 	onNeedFile: (path: string) => void;
 	onToggleViewed: (path: string) => void;
+	commentThreads: CommentThread[];
+	onCreateComment?: (input: CreateCommentInput) => Promise<ReviewComment>;
+	onReplyToComment?: (input: ReplyToCommentInput) => Promise<ReviewComment>;
 };
 
 const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
@@ -50,6 +57,9 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 			onVisiblePath,
 			onNeedFile,
 			onToggleViewed,
+			commentThreads,
+			onCreateComment,
+			onReplyToComment,
 		},
 		ref,
 	) {
@@ -192,6 +202,9 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 												mode={mode}
 												onModeChange={onModeChange}
 												continuous
+												commentThreads={commentThreads}
+												onCreateComment={onCreateComment}
+												onReplyToComment={onReplyToComment}
 											/>
 										</Suspense>
 										<Suspense
