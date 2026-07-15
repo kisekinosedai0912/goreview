@@ -16,7 +16,7 @@ import FileTreeCompare from "./FileTreeCompare";
 import ReviewMeta from "./ReviewMeta";
 import ThemeToggle from "./ThemeToggle";
 
-const ComparisonStack = lazy(() => import("./ComparisonStack"));
+const DiffViewer = lazy(() => import("./DiffViewer"));
 const ExplanationList = lazy(() => import("./ExplanationList"));
 
 type ReviewWorkspaceProps = {
@@ -156,7 +156,7 @@ function ReviewWorkspace({
 												<div className="panel-fallback">Loading comparison…</div>
 											}
 										>
-											<ComparisonStack file={selectedFile} />
+											<DiffViewer file={selectedFile} />
 										</Suspense>
 
 										<Suspense

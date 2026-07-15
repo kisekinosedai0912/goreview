@@ -14,4 +14,9 @@ export default defineConfig({
 			"@": path.resolve(rootDir, "./src"),
 		},
 	},
+	worker: {
+		// Keep dynamic imports (shiki grammars) as separate lazy chunks
+		// instead of inlining everything into one worker bundle.
+		format: "es",
+	},
 });

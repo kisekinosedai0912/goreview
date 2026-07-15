@@ -1,6 +1,5 @@
 export { default as CategoryBadge } from "./components/CategoryBadge";
-export { default as CodePane } from "./components/CodePane";
-export { default as ComparisonStack } from "./components/ComparisonStack";
+export { default as DiffViewer } from "./components/DiffViewer";
 export { default as ExplanationItem } from "./components/ExplanationItem";
 export { default as ExplanationList } from "./components/ExplanationList";
 export { default as FileTreeCompare } from "./components/FileTreeCompare";
