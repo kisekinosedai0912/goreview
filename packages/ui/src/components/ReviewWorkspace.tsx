@@ -5,6 +5,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	useTransition,
 } from "react";
 import {
 	getOrderedFiles,
@@ -68,6 +69,7 @@ function ReviewWorkspace({
 		ReadonlySet<ChangeCategory>
 	>(new Set());
 	const [mode, setMode] = useState<ViewMode>(storedViewMode);
+	const [, startModeTransition] = useTransition();
 	const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
 	const [intelligence, setIntelligence] = useState<ReviewIntelligenceResult>(
 		() => ({
@@ -87,6 +89,10 @@ function ReviewWorkspace({
 	);
 	const feedRef = useRef<ReviewFeedHandle | null>(null);
 	const inFlightRef = useRef(new Set<string>());
+	const pendingNavigationRef = useRef<{
+		path: string;
+		anchor?: CommentAnchor;
+	} | null>(null);
 
 	const [prevSnapshot, setPrevSnapshot] = useState(snapshot);
 	if (prevSnapshot !== snapshot) {
@@ -105,6 +111,7 @@ function ReviewWorkspace({
 		setLineExplanations(new Map());
 		setExplainingKeys(new Set());
 		inFlightRef.current.clear();
+		pendingNavigationRef.current = null;
 	}
 
 	const reviewKey = `${snapshot.repo}#${snapshot.headSha}`;
@@ -160,20 +167,43 @@ function ReviewWorkspace({
 		[dataSource, files],
 	);
 
-	const handleSelect = useCallback((path: string) => {
-		setSelectedPath(path);
-		feedRef.current?.scrollToPath(path);
-	}, []);
+	const handleSelect = useCallback(
+		(path: string) => {
+			setSelectedPath(path);
+			if (orderedFiles.some((file) => file.path === path)) {
+				feedRef.current?.scrollToPath(path);
+				return;
+			}
+			pendingNavigationRef.current = { path };
+			setStatusFilter(new Set());
+			setCategoryFilter(new Set());
+		},
+		[orderedFiles],
+	);
+
+	const handleAnchorNavigation = useCallback(
+		(anchor: CommentAnchor) => {
+			setSelectedPath(anchor.path);
+			if (orderedFiles.some((file) => file.path === anchor.path)) {
+				feedRef.current?.scrollToAnchor(anchor);
+				return;
+			}
+			pendingNavigationRef.current = { path: anchor.path, anchor };
+			setStatusFilter(new Set());
+			setCategoryFilter(new Set());
+		},
+		[orderedFiles],
+	);
 
 	const closeJumper = useCallback(() => setJumperOpen(false), []);
 	const handleModeChange = useCallback((next: ViewMode) => {
-		setMode(next);
+		startModeTransition(() => setMode(next));
 		try {
 			window.localStorage.setItem("goreview-diff-mode", next);
 		} catch {
 			// Preference persistence is best-effort.
 		}
-	}, []);
+	}, [startModeTransition]);
 
 	const mergeComment = useCallback((comment: ReviewComment) => {
 		setCommentThreads((current) => {
@@ -309,6 +339,22 @@ function ReviewWorkspace({
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, []);
+
+	useEffect(() => {
+		const pending = pendingNavigationRef.current;
+		if (
+			!pending ||
+			!orderedFiles.some((file) => file.path === pending.path)
+		) {
+			return;
+		}
+		pendingNavigationRef.current = null;
+		const frame = window.requestAnimationFrame(() => {
+			if (pending.anchor) feedRef.current?.scrollToAnchor(pending.anchor);
+			else feedRef.current?.scrollToPath(pending.path);
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [orderedFiles]);
 
 	useEffect(() => {
 		if (!dataSource?.listCommentThreads) return;
@@ -472,6 +518,7 @@ function ReviewWorkspace({
 								? () => void generateIntelligence()
 								: undefined
 						}
+						onNavigateAnchor={handleAnchorNavigation}
 						fileExplanations={fileExplanations}
 						lineExplanations={lineExplanations}
 						explainingKeys={explainingKeys}

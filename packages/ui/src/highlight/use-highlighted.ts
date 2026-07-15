@@ -8,8 +8,9 @@ let workerFailed = false;
 let requestSeq = 0;
 const pending = new Map<number, (response: HighlightResponse) => void>();
 
-const CACHE_LIMIT = 40;
+const CACHE_LIMIT = 1_000;
 const cache = new Map<string, TokenLine[]>();
+const inFlight = new Map<string, Promise<TokenLine[] | null>>();
 
 function cacheKey(text: string, lang: string, theme: ThemeName): string {
 	// djb2 over a sample; collisions only cost a wrong highlight color.
@@ -61,24 +62,31 @@ export async function highlightText(
 	const key = cacheKey(text, lang, theme);
 	const cached = cache.get(key);
 	if (cached) return cached;
+	const existing = inFlight.get(key);
+	if (existing) return existing;
 
 	const instance = getWorker();
 	if (!instance) return null;
 
-	const id = ++requestSeq;
-	const response = await new Promise<HighlightResponse>((resolve) => {
-		pending.set(id, resolve);
-		instance.postMessage({ id, text, lang, theme });
+	const request = (async () => {
+		const id = ++requestSeq;
+		const response = await new Promise<HighlightResponse>((resolve) => {
+			pending.set(id, resolve);
+			instance.postMessage({ id, text, lang, theme });
+		});
+		if ("error" in response) return null;
+
+		cache.set(key, response.lines);
+		if (cache.size > CACHE_LIMIT) {
+			const oldest = cache.keys().next().value;
+			if (oldest !== undefined) cache.delete(oldest);
+		}
+		return response.lines;
+	})().finally(() => {
+		inFlight.delete(key);
 	});
-
-	if ("error" in response) return null;
-
-	cache.set(key, response.lines);
-	if (cache.size > CACHE_LIMIT) {
-		const oldest = cache.keys().next().value;
-		if (oldest !== undefined) cache.delete(oldest);
-	}
-	return response.lines;
+	inFlight.set(key, request);
+	return request;
 }
 
 type HighlightState = {
@@ -130,6 +138,15 @@ export function useHighlightedFile(
 	}, [content, lang, theme]);
 
 	return state.content === content ? state.tokens : null;
+}
+
+export function useHighlightedLine(
+	content: string,
+	lang: string | undefined,
+	theme: ThemeName,
+): TokenLine | null {
+	const lines = useHighlightedFile(content, lang, theme);
+	return lines?.[0] ?? null;
 }
 
 export function useAppTheme(): ThemeName {

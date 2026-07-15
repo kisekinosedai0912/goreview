@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
 	buildDeterministicIntelligence,
+	computeFileDiff,
 	withComputedDiffs,
+	type ChangedFile,
 	type CommentAnchor,
 } from "@goreview/core";
 import { samplePr } from "@goreview/core/fixtures";
@@ -40,6 +42,30 @@ describe("continuous review UI", () => {
 		expect(
 			controls.every((control) => /old line|new line/.test(control.ariaLabel ?? "")),
 		).toBe(true);
+	});
+
+	it("keeps removed code beside added code in split mode", () => {
+		const file: ChangedFile = {
+			path: "src/auth.ts",
+			status: "modified",
+			categories: ["backend"],
+			language: "typescript",
+			oldContent: "if (!user) throw new Error('missing');\n",
+			newContent: "if (user) throw new Error('exists');\n",
+			diff: computeFileDiff(
+				"if (!user) throw new Error('missing');\n",
+				"if (user) throw new Error('exists');\n",
+			),
+			events: [],
+		};
+		render(<DiffViewer file={file} continuous />);
+
+		const removed = screen.getByText(/missing/).closest(".diff-line");
+		const added = screen.getByText(/exists/).closest(".diff-line");
+		expect(removed?.getAttribute("data-type")).toBe("removed");
+		expect(added?.getAttribute("data-type")).toBe("added");
+		expect(screen.getByText("Old · base")).toBeTruthy();
+		expect(screen.getByText("New · head")).toBeTruthy();
 	});
 
 	it("keeps sidebar filters controlled by the workspace", async () => {

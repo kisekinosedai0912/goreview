@@ -1,14 +1,5 @@
 import {
-	forwardRef,
-	lazy,
-	memo,
-	Suspense,
-	useCallback,
-	useImperativeHandle,
-	useMemo,
-	useRef,
-} from "react";
-import {
+	anchorsForDiffLine,
 	explainEvents,
 	type ChangedFile,
 	type CodeExplanation,
@@ -21,13 +12,23 @@ import {
 	type ReviewSnapshot,
 } from "@goreview/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import ReviewMeta from "../ReviewMeta";
+import {
+	forwardRef,
+	memo,
+	useCallback,
+	useImperativeHandle,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
+import { useAppTheme } from "../../highlight/use-highlighted";
 import type { ViewMode } from "../DiffViewer";
-import IntelligencePanel from "./IntelligencePanel";
+import ExplanationList from "../ExplanationList";
+import ReviewMeta from "../ReviewMeta";
+import DiffRowContent from "./DiffRowContent";
 import ExplanationCard from "./ExplanationCard";
-
-const DiffViewer = lazy(() => import("../DiffViewer"));
-const ExplanationList = lazy(() => import("../ExplanationList"));
+import IntelligencePanel from "./IntelligencePanel";
+import { buildDiffRows, type DiffRow } from "./diff-rows";
 
 export type ReviewFeedHandle = {
 	scrollToPath(path: string): void;
@@ -51,12 +52,72 @@ type ReviewFeedProps = {
 	intelligence: ReviewIntelligenceResult;
 	generatingIntelligence: boolean;
 	onGenerateIntelligence?: () => void;
+	onNavigateAnchor?: (anchor: CommentAnchor) => void;
 	fileExplanations: ReadonlyMap<string, CodeExplanation>;
 	lineExplanations: ReadonlyMap<string, CodeExplanation>;
 	explainingKeys: ReadonlySet<string>;
 	onExplainFile?: (path: string) => void;
 	onExplainLine?: (anchor: CommentAnchor) => void;
 };
+
+type FeedRow =
+	| { type: "overview"; key: "review-overview" }
+	| { type: "file-header"; key: string; file: ChangedFile }
+	| { type: "file-state"; key: string; file: ChangedFile }
+	| { type: "diff-header"; key: string; file: ChangedFile }
+	| { type: "diff"; key: string; file: ChangedFile; diffRow: DiffRow }
+	| { type: "explanations"; key: string; file: ChangedFile };
+
+type FeedModel = {
+	rows: FeedRow[];
+	pathIndices: Map<string, number>;
+	anchorIndices: Map<string, number>;
+};
+
+function anchorKey(anchor: CommentAnchor): string {
+	return `${anchor.path}:${anchor.side}:${anchor.line}`;
+}
+
+function anchorsForRow(path: string, row: DiffRow): CommentAnchor[] {
+	if (row.type === "hunk" || row.type === "gap" || !row.commentable) return [];
+	if (row.type === "line") {
+		return anchorsForDiffLine(path, row.line).filter(
+			(anchor) => row.line.type !== "context" || anchor.side === "RIGHT",
+		);
+	}
+	if (row.type !== "pair") return [];
+	return [
+		...(row.left
+			? anchorsForDiffLine(path, row.left).filter(
+					(anchor) => anchor.side === "LEFT",
+				)
+			: []),
+		...(row.right
+			? anchorsForDiffLine(path, row.right).filter(
+					(anchor) => anchor.side === "RIGHT",
+				)
+			: []),
+	];
+}
+
+function estimateRowSize(row: FeedRow): number {
+	switch (row.type) {
+		case "overview":
+			return 760;
+		case "file-header":
+			return 112;
+		case "file-state":
+			return 72;
+		case "diff-header":
+			return 44;
+		case "explanations":
+			return 160;
+		case "diff":
+			return row.diffRow.type === "hunk" || row.diffRow.type === "gap"
+				? 30
+				: 24;
+	}
+}
 
 const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 	function ReviewFeed(
@@ -77,6 +138,7 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 			intelligence,
 			generatingIntelligence,
 			onGenerateIntelligence,
+			onNavigateAnchor,
 			fileExplanations,
 			lineExplanations,
 			explainingKeys,
@@ -86,69 +148,147 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 		ref,
 	) {
 		const scrollRef = useRef<HTMLDivElement | null>(null);
-		const paths = useMemo(() => files.map((file) => file.path), [files]);
+		const [collapsedHunks, setCollapsedHunks] = useState<
+			ReadonlyMap<string, ReadonlySet<number>>
+		>(new Map());
+		const [expandedGaps, setExpandedGaps] = useState<
+			ReadonlyMap<string, ReadonlySet<number>>
+		>(new Map());
+		const theme = useAppTheme();
 
-		const virtualizer = useVirtualizer({
-			count: files.length + 1,
-			getScrollElement: () => scrollRef.current,
-			estimateSize: (index) => (index === 0 ? 920 : 520),
-			overscan: 2,
-			getItemKey: (index) => (index === 0 ? "review-meta" : paths[index - 1]!),
-			onChange: (instance) => {
-				const visible = instance.getVirtualItems();
-				const firstFile = visible.find((item) => item.index > 0);
-				if (firstFile) {
-					const path = paths[firstFile.index - 1];
-					if (path) onVisiblePath(path);
+		const model = useMemo<FeedModel>(() => {
+			const rows: FeedRow[] = [{ type: "overview", key: "review-overview" }];
+			const pathIndices = new Map<string, number>();
+			const anchorIndices = new Map<string, number>();
+
+			for (const file of files) {
+				pathIndices.set(file.path, rows.length);
+				rows.push({
+					type: "file-header",
+					key: `file:${file.path}`,
+					file,
+				});
+				const isHydrated =
+					file.oldContent !== null || file.newContent !== null;
+				if (!isHydrated || !file.diff || file.diff.hunks.length === 0) {
+					rows.push({
+						type: "file-state",
+						key: `state:${file.path}`,
+						file,
+					});
+					continue;
 				}
-				for (const item of visible) {
-					if (item.index === 0) continue;
-					const file = files[item.index - 1];
+
+				rows.push({
+					type: "diff-header",
+					key: `diff-header:${file.path}`,
+					file,
+				});
+				const fileRows = buildDiffRows(
+					file,
+					mode,
+					collapsedHunks.get(file.path) ?? new Set(),
+					expandedGaps.get(file.path) ?? new Set(),
+				);
+				for (const diffRow of fileRows) {
+					const index = rows.length;
+					for (const anchor of anchorsForRow(file.path, diffRow)) {
+						anchorIndices.set(anchorKey(anchor), index);
+					}
+					rows.push({
+						type: "diff",
+						key: `diff:${file.path}:${diffRow.key}`,
+						file,
+						diffRow,
+					});
+				}
+				if (explainEvents(file.events).length > 0) {
+					rows.push({
+						type: "explanations",
+						key: `explanations:${file.path}`,
+						file,
+					});
+				}
+			}
+			return { rows, pathIndices, anchorIndices };
+		}, [files, mode, collapsedHunks, expandedGaps]);
+		const modelRef = useRef(model);
+		modelRef.current = model;
+
+		// The one global virtualizer keeps even very large lockfile diffs cheap:
+		// only rows in and around the viewport exist in the DOM.
+		const virtualizer = useVirtualizer({
+			count: model.rows.length,
+			getScrollElement: () => scrollRef.current,
+			estimateSize: (index) => estimateRowSize(model.rows[index]!),
+			overscan: 18,
+			getItemKey: (index) => model.rows[index]!.key,
+			onChange: (instance) => {
+				const viewportStart = instance.scrollOffset ?? 0;
+				const firstVisible = instance
+					.getVirtualItems()
+					.find((item) => item.end > viewportStart + 56);
+				if (firstVisible) {
+					const row = model.rows[firstVisible.index];
+					if (row && row.type !== "overview") onVisiblePath(row.file.path);
+				}
+				for (const item of instance.getVirtualItems()) {
+					const row = model.rows[item.index];
+					if (!row || row.type === "overview") continue;
 					if (
-						file &&
-						file.oldContent === null &&
-						file.newContent === null
+						row.file.oldContent === null &&
+						row.file.newContent === null
 					) {
-						onNeedFile(file.path);
+						onNeedFile(row.file.path);
 					}
 				}
 			},
 		});
 
+		const revealSelector = useCallback((selector: string) => {
+			let attempts = 0;
+			const reveal = () => {
+				const element =
+					scrollRef.current?.querySelector<HTMLElement>(selector) ?? null;
+				if (element) {
+					element.scrollIntoView({ block: "start", behavior: "smooth" });
+					element.focus({ preventScroll: true });
+					return;
+				}
+				attempts += 1;
+				if (attempts < 12) window.setTimeout(reveal, 50);
+			};
+			window.requestAnimationFrame(reveal);
+		}, []);
+
 		const scrollToPath = useCallback(
 			(path: string) => {
-				const index = paths.indexOf(path);
-				if (index >= 0) {
-					virtualizer.scrollToIndex(index + 1, {
-						align: "start",
-						behavior: "smooth",
-					});
-				}
+				const index = modelRef.current.pathIndices.get(path);
+				if (index === undefined) return;
+				// Smooth scrolling with dynamically measured virtual rows is inaccurate.
+				// Mount the exact target first, then animate the final short adjustment.
+				virtualizer.scrollToIndex(index, { align: "start" });
+				revealSelector(
+					`[data-review-path="${typeof CSS === "undefined" ? path : CSS.escape(path)}"]`,
+				);
 			},
-			[paths, virtualizer],
+			[revealSelector, virtualizer],
 		);
 
 		const scrollToAnchor = useCallback(
 			(anchor: CommentAnchor) => {
-				scrollToPath(anchor.path);
-				const key = `${anchor.path}:${anchor.side}:${anchor.line}`;
-				let attempts = 0;
-				const reveal = () => {
-					const escaped = typeof CSS !== "undefined" ? CSS.escape(key) : key;
-					const element = scrollRef.current?.querySelector<HTMLElement>(
-						`[data-review-anchors~="${escaped}"]`,
-					);
-					if (element) {
-						element.scrollIntoView({ behavior: "smooth", block: "center" });
-						element.focus({ preventScroll: true });
-						return;
-					}
-					attempts += 1;
-					if (attempts < 10) window.setTimeout(reveal, 120);
-				};
-				window.setTimeout(reveal, 120);
+				onNeedFile(anchor.path);
+				const key = anchorKey(anchor);
+				const index = modelRef.current.anchorIndices.get(key);
+				if (index === undefined) {
+					scrollToPath(anchor.path);
+				} else {
+					virtualizer.scrollToIndex(index, { align: "center" });
+				}
+				const escaped = typeof CSS === "undefined" ? key : CSS.escape(key);
+				revealSelector(`[data-review-anchors~="${escaped}"]`);
 			},
-			[scrollToPath],
+			[onNeedFile, revealSelector, scrollToPath, virtualizer],
 		);
 
 		useImperativeHandle(
@@ -157,12 +297,26 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 			[scrollToAnchor, scrollToPath],
 		);
 
-		const measure = useCallback(
-			(element: HTMLDivElement | null) => {
-				if (element) virtualizer.measureElement(element);
-			},
-			[virtualizer],
-		);
+		const toggleHunk = useCallback((path: string, hunkIndex: number) => {
+			setCollapsedHunks((current) => {
+				const next = new Map(current);
+				const indices = new Set(next.get(path) ?? []);
+				if (indices.has(hunkIndex)) indices.delete(hunkIndex);
+				else indices.add(hunkIndex);
+				next.set(path, indices);
+				return next;
+			});
+		}, []);
+
+		const expandGap = useCallback((path: string, gapIndex: number) => {
+			setExpandedGaps((current) => {
+				const next = new Map(current);
+				const indices = new Set(next.get(path) ?? []);
+				indices.add(gapIndex);
+				next.set(path, indices);
+				return next;
+			});
+		}, []);
 
 		if (files.length === 0) {
 			return (
@@ -182,119 +336,206 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 					style={{ height: virtualizer.getTotalSize() }}
 				>
 					{virtualizer.getVirtualItems().map((virtualItem) => {
-						if (virtualItem.index === 0) {
+						const row = model.rows[virtualItem.index]!;
+						const style = {
+							transform: `translateY(${virtualItem.start}px)`,
+						};
+						const common = {
+							"data-index": virtualItem.index,
+							ref: virtualizer.measureElement,
+							style,
+						};
+
+						if (row.type === "overview") {
 							return (
 								<div
-									key="review-meta"
-									ref={measure}
-									data-index={virtualItem.index}
-									className="review-feed__item"
-									style={{ transform: `translateY(${virtualItem.start}px)` }}
+									key={row.key}
+									{...common}
+									className="review-feed__item review-feed__item--overview"
 								>
 									<ReviewMeta snapshot={{ ...snapshot, files }} />
 									<IntelligencePanel
 										result={intelligence}
 										generating={generatingIntelligence}
 										onGenerate={onGenerateIntelligence}
-										onNavigate={scrollToAnchor}
+										onNavigate={onNavigateAnchor ?? scrollToAnchor}
 									/>
 								</div>
 							);
 						}
 
-						const file = files[virtualItem.index - 1]!;
-						const isLoading = loadingPaths.has(file.path);
-						const error = errors.get(file.path);
-						const isHydrated =
-							file.oldContent !== null || file.newContent !== null;
-
-						return (
-							<section
-								key={file.path}
-								ref={measure}
-								data-index={virtualItem.index}
-								data-review-path={file.path}
-								className="review-feed__item review-file"
-								style={{ transform: `translateY(${virtualItem.start}px)` }}
-							>
-								<header className="review-scroll__file">
-									<div className="review-scroll__file-info">
-										<p
-											className="review-scroll__status"
-											data-status={file.status}
-										>
-											{file.status}
-											{file.oldPath ? ` from ${file.oldPath}` : ""}
-										</p>
-										<h2 className="review-scroll__path">{file.path}</h2>
-									</div>
-									<label className="viewed-toggle">
-										<input
-											type="checkbox"
-											checked={viewed.has(file.path)}
-											onChange={() => onToggleViewed(file.path)}
-										/>
-										<span>Viewed</span>
-									</label>
-									{onExplainFile ? (
-										<button
-											type="button"
-											className="review-file__explain"
-											onClick={() => onExplainFile(file.path)}
-											disabled={explainingKeys.has(`file:${file.path}`)}
-										>
-											{explainingKeys.has(`file:${file.path}`)
-												? "Explaining…"
-												: "Explain file"}
-										</button>
+						if (row.type === "file-header") {
+							const explanation = fileExplanations.get(row.file.path);
+							return (
+								<section
+									key={row.key}
+									{...common}
+									data-review-path={row.file.path}
+									tabIndex={-1}
+									className="review-feed__item review-feed__item--file-header"
+								>
+									<header className="review-scroll__file">
+										<div className="review-scroll__file-info">
+											<p
+												className="review-scroll__status"
+												data-status={row.file.status}
+											>
+												{row.file.status}
+												{row.file.oldPath ? ` from ${row.file.oldPath}` : ""}
+											</p>
+											<h2 className="review-scroll__path">{row.file.path}</h2>
+										</div>
+										<div className="review-file__actions">
+											<label className="viewed-toggle">
+												<input
+													type="checkbox"
+													checked={viewed.has(row.file.path)}
+													onChange={() => onToggleViewed(row.file.path)}
+												/>
+												<span>Viewed</span>
+											</label>
+											{onExplainFile ? (
+												<button
+													type="button"
+													className="review-file__explain"
+													onClick={() => onExplainFile(row.file.path)}
+													disabled={explainingKeys.has(
+														`file:${row.file.path}`,
+													)}
+												>
+													{explainingKeys.has(`file:${row.file.path}`)
+														? "Explaining…"
+														: "Explain file"}
+												</button>
+											) : null}
+										</div>
+									</header>
+									{explanation ? (
+										<ExplanationCard explanation={explanation} />
 									) : null}
-								</header>
-								{fileExplanations.get(file.path) ? (
-									<ExplanationCard
-										explanation={fileExplanations.get(file.path)!}
-									/>
-								) : null}
+								</section>
+							);
+						}
 
-								{error ? (
-									<p className="panel-fallback">{error}</p>
-								) : isLoading || !isHydrated ? (
-									<p className="panel-fallback">Loading file contents…</p>
-								) : (
-									<>
-										<Suspense
-											fallback={
-												<div className="panel-fallback">
-													Loading comparison…
-												</div>
-											}
+						if (row.type === "file-state") {
+							const error = errors.get(row.file.path);
+							const isLoading = loadingPaths.has(row.file.path);
+							const isHydrated =
+								row.file.oldContent !== null ||
+								row.file.newContent !== null;
+							const message = error
+								? error
+								: isLoading || !isHydrated
+									? "Loading file contents…"
+									: row.file.diff?.hunks.length === 0
+										? `No line changes${row.file.status === "renamed" ? " — file was renamed" : ""}.`
+										: "Content is unavailable for this file.";
+							return (
+								<div
+									key={row.key}
+									{...common}
+									className="review-feed__item review-feed__item--state"
+								>
+									<p className="panel-fallback">{message}</p>
+								</div>
+							);
+						}
+
+						if (row.type === "diff-header") {
+							return (
+								<div
+									key={row.key}
+									{...common}
+									className="review-feed__item review-feed__item--diff-header"
+								>
+									<div className="diff-viewer__header">
+										<div className="diff-viewer__stats">
+											<span className="tree-stats__additions">
+												+{row.file.diff?.additions ?? 0}
+											</span>
+											<span className="tree-stats__deletions">
+												−{row.file.diff?.deletions ?? 0}
+											</span>
+										</div>
+										{mode === "split" ? (
+											<div className="diff-viewer__columns" aria-hidden="true">
+												<span>Old · base</span>
+												<span>New · head</span>
+											</div>
+										) : null}
+										<div
+											className="diff-viewer__modes"
+											role="tablist"
+											aria-label="Diff view mode"
 										>
-											<DiffViewer
-												file={file}
-												mode={mode}
-												onModeChange={onModeChange}
-												continuous
-												commentThreads={commentThreads}
-												onCreateComment={onCreateComment}
-												onReplyToComment={onReplyToComment}
-												lineExplanations={lineExplanations}
-												explainingAnchors={explainingKeys}
-												onExplainLine={onExplainLine}
-											/>
-										</Suspense>
-										<Suspense
-											fallback={
-												<div className="panel-fallback">
-													Loading explanations…
-												</div>
-											}
-										>
-											<ExplanationList
-												explanations={explainEvents(file.events)}
-											/>
-										</Suspense>
-									</>
-								)}
-							</section>
+											<button
+												type="button"
+												role="tab"
+												aria-selected={mode === "unified"}
+												className="tree-compare__mode"
+												onClick={() => onModeChange("unified")}
+											>
+												Unified
+											</button>
+											<button
+												type="button"
+												role="tab"
+												aria-selected={mode === "split"}
+												className="tree-compare__mode"
+												onClick={() => onModeChange("split")}
+											>
+												Split
+											</button>
+										</div>
+									</div>
+								</div>
+							);
+						}
+
+						if (row.type === "explanations") {
+							return (
+								<div
+									key={row.key}
+									{...common}
+									className="review-feed__item review-feed__item--explanations"
+								>
+									<ExplanationList
+										explanations={explainEvents(row.file.events)}
+									/>
+								</div>
+							);
+						}
+
+						const rowAnchors = anchorsForRow(
+							row.file.path,
+							row.diffRow,
+						).map(anchorKey);
+						return (
+							<div
+								key={row.key}
+								{...common}
+								data-review-anchors={rowAnchors.join(" ")}
+								tabIndex={-1}
+								className="review-feed__item review-feed__item--diff"
+							>
+								<DiffRowContent
+									file={row.file}
+									row={row.diffRow}
+									theme={theme}
+									threads={commentThreads}
+									onCreateComment={onCreateComment}
+									onReplyToComment={onReplyToComment}
+									lineExplanations={lineExplanations}
+									explainingAnchors={explainingKeys}
+									onExplainLine={onExplainLine}
+									onToggleHunk={(hunkIndex) =>
+										toggleHunk(row.file.path, hunkIndex)
+									}
+									onExpandGap={(gapIndex) =>
+										expandGap(row.file.path, gapIndex)
+									}
+								/>
+							</div>
 						);
 					})}
 				</div>

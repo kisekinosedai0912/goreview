@@ -90,10 +90,13 @@ function InlineComments({
 	};
 
 	if (!onCreate && !onExplain && threads.length === 0 && !explanation) return null;
+	const hasContent =
+		threads.length > 0 || activeAnchor !== null || explanation !== undefined;
 
 	return (
 		<div
 			className="inline-comment"
+			data-has-content={hasContent || undefined}
 			data-review-anchors={anchors
 				.map((anchor) => `${anchor.path}:${anchor.side}:${anchor.line}`)
 				.join(" ")}
@@ -181,6 +184,7 @@ function InlineComments({
 						<span
 							key={`${anchor.side}:${anchor.line}`}
 							className="inline-comment__trigger-group"
+							data-side={anchor.side}
 						>
 							{onCreate ? (
 								<button
@@ -188,8 +192,9 @@ function InlineComments({
 									className="inline-comment__trigger"
 									onClick={() => setActiveAnchor(anchor)}
 									aria-label={`Comment on ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
+									title={`Comment on ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
 								>
-									+ Comment
+									+
 								</button>
 							) : null}
 							{onExplain ? (
@@ -198,8 +203,10 @@ function InlineComments({
 									className="inline-comment__trigger inline-comment__trigger--explain"
 									onClick={() => onExplain(anchor)}
 									disabled={explaining}
+									aria-label={`Explain ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
+									title={`Explain ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
 								>
-									{explaining ? "Explaining…" : "Explain line"}
+									{explaining ? "…" : "✦"}
 								</button>
 							) : null}
 						</span>
