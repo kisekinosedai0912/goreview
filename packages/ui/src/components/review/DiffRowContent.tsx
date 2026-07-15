@@ -29,6 +29,7 @@ type DiffRowContentProps = {
 	lineExplanations: ReadonlyMap<string, CodeExplanation>;
 	explainingAnchors: ReadonlySet<string>;
 	onExplainLine?: (anchor: CommentAnchor) => void;
+	onDismissLineExplanation?: (anchor: CommentAnchor) => void;
 	onToggleHunk: (hunkIndex: number) => void;
 	onExpandGap: (gapIndex: number) => void;
 };
@@ -42,6 +43,7 @@ type CommentableLineProps = {
 	lineExplanations: ReadonlyMap<string, CodeExplanation>;
 	explainingAnchors: ReadonlySet<string>;
 	onExplainLine?: (anchor: CommentAnchor) => void;
+	onDismissLineExplanation?: (anchor: CommentAnchor) => void;
 };
 
 function threadsAtAnchors(
@@ -167,6 +169,7 @@ const UnifiedLine = memo(function UnifiedLine({
 	lineExplanations,
 	explainingAnchors,
 	onExplainLine,
+	onDismissLineExplanation,
 }: {
 	file: ChangedFile;
 	line: DiffLine;
@@ -203,6 +206,7 @@ const UnifiedLine = memo(function UnifiedLine({
 				explanationAnchor={anchors.find((anchor) =>
 					lineExplanations.has(reviewAnchorKey(anchor)),
 				)}
+				onDismissExplanation={onDismissLineExplanation}
 			/>
 		</div>
 	);
@@ -220,6 +224,7 @@ const SplitPair = memo(function SplitPair({
 	lineExplanations,
 	explainingAnchors,
 	onExplainLine,
+	onDismissLineExplanation,
 }: {
 	file: ChangedFile;
 	left: DiffLine | null;
@@ -293,6 +298,7 @@ const SplitPair = memo(function SplitPair({
 				explanationAnchor={anchors.find((anchor) =>
 					lineExplanations.has(reviewAnchorKey(anchor)),
 				)}
+				onDismissExplanation={onDismissLineExplanation}
 			/>
 		</div>
 	);
@@ -308,6 +314,7 @@ function DiffRowContent({
 	lineExplanations,
 	explainingAnchors,
 	onExplainLine,
+	onDismissLineExplanation,
 	onToggleHunk,
 	onExpandGap,
 }: DiffRowContentProps) {
@@ -354,6 +361,7 @@ function DiffRowContent({
 		lineExplanations,
 		explainingAnchors,
 		onExplainLine,
+		onDismissLineExplanation,
 	};
 	return row.type === "line" ? (
 		<UnifiedLine {...shared} line={row.line} />

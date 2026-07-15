@@ -19,6 +19,7 @@ type InlineCommentsProps = {
 	explaining?: boolean;
 	explanation?: CodeExplanation;
 	explanationAnchor?: CommentAnchor;
+	onDismissExplanation?: (anchor: CommentAnchor) => void;
 };
 
 function CommentBody({
@@ -51,6 +52,7 @@ function InlineComments({
 	explaining = false,
 	explanation,
 	explanationAnchor,
+	onDismissExplanation,
 }: InlineCommentsProps) {
 	const [activeAnchor, setActiveAnchor] = useState<CommentAnchor | null>(null);
 	const [body, setBody] = useState("");
@@ -193,6 +195,7 @@ function InlineComments({
 									onClick={() => setActiveAnchor(anchor)}
 									aria-label={`Comment on ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
 									title={`Comment on ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
+									data-tooltip="Add review comment"
 								>
 									+
 								</button>
@@ -205,6 +208,7 @@ function InlineComments({
 									disabled={explaining}
 									aria-label={`Explain ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
 									title={`Explain ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
+									data-tooltip="Explain this line"
 								>
 									{explaining ? "…" : "✦"}
 								</button>
@@ -222,6 +226,11 @@ function InlineComments({
 									setActiveAnchor(explanationAnchor);
 									setBody(explanationAsComment(explanation));
 								}
+							: undefined
+					}
+					onClose={
+						onDismissExplanation && explanationAnchor
+							? () => onDismissExplanation(explanationAnchor)
 							: undefined
 					}
 				/>

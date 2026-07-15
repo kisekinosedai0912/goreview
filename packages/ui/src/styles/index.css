@@ -605,6 +605,7 @@ body {
 	width: 100%;
 	height: 100%;
 	overflow: auto;
+	overscroll-behavior-x: contain;
 	scrollbar-gutter: stable;
 }
 
@@ -623,6 +624,7 @@ body {
 
 .review-feed__item--overview,
 .review-feed__item--file-header,
+.review-feed__item--file-explanation,
 .review-feed__item--state,
 .review-feed__item--explanations {
 	padding: 1.25rem 2.5rem;
@@ -649,6 +651,11 @@ body {
 
 .review-feed__item--diff {
 	min-height: 24px;
+}
+
+.review-feed__list[data-mode="split"] .review-feed__item--diff-header,
+.review-feed__list[data-mode="split"] .review-feed__item--diff {
+	min-width: 1180px;
 }
 
 .review-feed__item--diff .diff-hunk-header,
@@ -1025,6 +1032,25 @@ body {
 	color: var(--quiet);
 	font-size: 1.1rem;
 	cursor: pointer;
+}
+
+.code-explanation > header .code-explanation__close {
+	display: grid;
+	place-items: center;
+	width: 28px;
+	height: 28px;
+	border: 1px solid color-mix(in srgb, var(--quiet) 28%, transparent);
+	border-radius: 50%;
+	background: var(--surface-raised);
+	line-height: 1;
+	transition: color 0.12s var(--ease), border-color 0.12s var(--ease),
+		background 0.12s var(--ease);
+}
+
+.code-explanation > header .code-explanation__close:hover {
+	border-color: var(--before);
+	background: var(--before-wash);
+	color: var(--before);
 }
 
 .code-explanation dl {
@@ -1581,6 +1607,7 @@ body {
 }
 
 .inline-comment__trigger {
+	position: relative;
 	display: grid;
 	place-items: center;
 	width: 20px;
@@ -1596,6 +1623,33 @@ body {
 	cursor: pointer;
 	transform: scale(0.86);
 	transition: opacity 0.12s var(--ease), transform 0.12s var(--ease);
+}
+
+.inline-comment__trigger::after {
+	position: absolute;
+	z-index: 8;
+	left: 50%;
+	bottom: calc(100% + 7px);
+	padding: 0.32rem 0.48rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-1);
+	background: var(--ink);
+	color: var(--surface);
+	box-shadow: var(--elevation-2);
+	content: attr(data-tooltip);
+	font: 600 0.66rem/1.2 var(--sans);
+	letter-spacing: 0;
+	white-space: nowrap;
+	pointer-events: none;
+	opacity: 0;
+	transform: translate(-50%, 3px);
+	transition: opacity 0.12s var(--ease), transform 0.12s var(--ease);
+}
+
+.inline-comment__trigger:hover::after,
+.inline-comment__trigger:focus-visible::after {
+	opacity: 1;
+	transform: translate(-50%, 0);
 }
 
 .inline-comment__trigger--explain {

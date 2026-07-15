@@ -39,6 +39,9 @@ describe("continuous review UI", () => {
 		);
 		const controls = screen.getAllByRole("button", { name: /Comment on/ });
 		expect(controls.length).toBeGreaterThan(0);
+		expect(controls[0]?.getAttribute("data-tooltip")).toBe(
+			"Add review comment",
+		);
 		expect(
 			controls.every((control) => /old line|new line/.test(control.ariaLabel ?? "")),
 		).toBe(true);
@@ -116,6 +119,35 @@ describe("inline comment states", () => {
 		expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
 			"Please cover this.",
 		);
+	});
+
+	it("labels line actions and lets reviewers close an explanation", async () => {
+		const onDismissExplanation = vi.fn();
+		render(
+			<InlineComments
+				anchors={[anchor]}
+				threads={[]}
+				onExplain={vi.fn()}
+				explanation={{
+					what: "The guard changed.",
+					why: "Existing users must be rejected.",
+					impact: "Signup validation changes.",
+					verify: ["Exercise the signup path."],
+					source: "deterministic",
+				}}
+				explanationAnchor={anchor}
+				onDismissExplanation={onDismissExplanation}
+			/>,
+		);
+		expect(
+			screen
+				.getByRole("button", { name: "Explain new line 12" })
+				.getAttribute("data-tooltip"),
+		).toBe("Explain this line");
+		await userEvent.click(
+			screen.getByRole("button", { name: "Close explanation" }),
+		);
+		expect(onDismissExplanation).toHaveBeenCalledWith(anchor);
 	});
 });
 

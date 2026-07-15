@@ -22,7 +22,13 @@ function ExplanationCard({
 					<small>{explanation.source}</small>
 				</div>
 				{onClose ? (
-					<button type="button" onClick={onClose} aria-label="Close explanation">
+					<button
+						type="button"
+						className="code-explanation__close"
+						onClick={onClose}
+						aria-label="Close explanation"
+						title="Close explanation"
+					>
 						×
 					</button>
 				) : null}

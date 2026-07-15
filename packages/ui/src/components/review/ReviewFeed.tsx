@@ -58,11 +58,14 @@ type ReviewFeedProps = {
 	explainingKeys: ReadonlySet<string>;
 	onExplainFile?: (path: string) => void;
 	onExplainLine?: (anchor: CommentAnchor) => void;
+	onDismissFileExplanation?: (path: string) => void;
+	onDismissLineExplanation?: (anchor: CommentAnchor) => void;
 };
 
 type FeedRow =
 	| { type: "overview"; key: "review-overview" }
 	| { type: "file-header"; key: string; file: ChangedFile }
+	| { type: "file-explanation"; key: string; file: ChangedFile }
 	| { type: "file-state"; key: string; file: ChangedFile }
 	| { type: "diff-header"; key: string; file: ChangedFile }
 	| { type: "diff"; key: string; file: ChangedFile; diffRow: DiffRow }
@@ -106,6 +109,8 @@ function estimateRowSize(row: FeedRow): number {
 			return 760;
 		case "file-header":
 			return 112;
+		case "file-explanation":
+			return 320;
 		case "file-state":
 			return 72;
 		case "diff-header":
@@ -144,6 +149,8 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 			explainingKeys,
 			onExplainFile,
 			onExplainLine,
+			onDismissFileExplanation,
+			onDismissLineExplanation,
 		},
 		ref,
 	) {
@@ -168,6 +175,13 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 					key: `file:${file.path}`,
 					file,
 				});
+				if (fileExplanations.has(file.path)) {
+					rows.push({
+						type: "file-explanation",
+						key: `file-explanation:${file.path}`,
+						file,
+					});
+				}
 				const isHydrated =
 					file.oldContent !== null || file.newContent !== null;
 				if (!isHydrated || !file.diff || file.diff.hunks.length === 0) {
@@ -211,7 +225,7 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 				}
 			}
 			return { rows, pathIndices, anchorIndices };
-		}, [files, mode, collapsedHunks, expandedGaps]);
+		}, [files, mode, collapsedHunks, expandedGaps, fileExplanations]);
 		const modelRef = useRef(model);
 		modelRef.current = model;
 
@@ -333,6 +347,7 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 			<div ref={scrollRef} className="review-feed__scroll">
 				<div
 					className="review-feed__list"
+					data-mode={mode}
 					style={{ height: virtualizer.getTotalSize() }}
 				>
 					{virtualizer.getVirtualItems().map((virtualItem) => {
@@ -365,7 +380,6 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 						}
 
 						if (row.type === "file-header") {
-							const explanation = fileExplanations.get(row.file.path);
 							return (
 								<section
 									key={row.key}
@@ -410,10 +424,28 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 											) : null}
 										</div>
 									</header>
-									{explanation ? (
-										<ExplanationCard explanation={explanation} />
-									) : null}
 								</section>
+							);
+						}
+
+						if (row.type === "file-explanation") {
+							const explanation = fileExplanations.get(row.file.path);
+							if (!explanation) return null;
+							return (
+								<div
+									key={row.key}
+									{...common}
+									className="review-feed__item review-feed__item--file-explanation"
+								>
+									<ExplanationCard
+										explanation={explanation}
+										onClose={
+											onDismissFileExplanation
+												? () => onDismissFileExplanation(row.file.path)
+												: undefined
+										}
+									/>
+								</div>
 							);
 						}
 
@@ -528,6 +560,7 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 									lineExplanations={lineExplanations}
 									explainingAnchors={explainingKeys}
 									onExplainLine={onExplainLine}
+									onDismissLineExplanation={onDismissLineExplanation}
 									onToggleHunk={(hunkIndex) =>
 										toggleHunk(row.file.path, hunkIndex)
 									}

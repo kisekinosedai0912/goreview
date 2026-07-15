@@ -443,6 +443,23 @@ function ReviewWorkspace({
 		[dataSource],
 	);
 
+	const dismissFileExplanation = useCallback((path: string) => {
+		setFileExplanations((current) => {
+			const next = new Map(current);
+			next.delete(path);
+			return next;
+		});
+	}, []);
+
+	const dismissLineExplanation = useCallback((anchor: CommentAnchor) => {
+		const key = `${anchor.path}:${anchor.side}:${anchor.line}`;
+		setLineExplanations((current) => {
+			const next = new Map(current);
+			next.delete(key);
+			return next;
+		});
+	}, []);
+
 	return (
 		<div className="review-workspace">
 			<aside className="review-workspace__sidebar">
@@ -532,6 +549,8 @@ function ReviewWorkspace({
 								? (anchor) => void explainCode(anchor.path, anchor)
 								: undefined
 						}
+						onDismissFileExplanation={dismissFileExplanation}
+						onDismissLineExplanation={dismissLineExplanation}
 					/>
 				</div>
 			</main>
