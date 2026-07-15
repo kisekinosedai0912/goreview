@@ -39,10 +39,22 @@ export {
 } from "./review/order";
 export {
 	buildDeterministicIntelligence,
-	scoreFileRisk,
 	validateIntelligenceEvidence,
 } from "./review/intelligence";
+export {
+	buildFileRelationships,
+	buildReviewFacts,
+	buildReviewPromptChunks,
+	type ReviewFacts,
+	type ReviewFileFact,
+	type ReviewPromptChunk,
+} from "./review/facts";
+export {
+	levelForRiskScore,
+	scoreFileRisk,
+} from "./review/risk";
 export type {
 	ExplainCodeInput,
 	ReviewDataSource,
+	ReviewIntelligenceResult,
 } from "./review/data-source";

@@ -4,10 +4,14 @@ import { samplePr } from "../fixtures/sample-pr";
 import { getCommentableAnchors, isCommentableAnchor } from "./anchors";
 import {
 	buildDeterministicIntelligence,
-	scoreFileRisk,
 	validateIntelligenceEvidence,
 } from "./intelligence";
 import { getOrderedFiles } from "./order";
+import { scoreFileRisk } from "./risk";
+import {
+	buildFileRelationships,
+	buildReviewPromptChunks,
+} from "./facts";
 
 const snapshot = withComputedDiffs(samplePr);
 
@@ -93,5 +97,36 @@ describe("deterministic review intelligence", () => {
 		const result = validateIntelligenceEvidence(snapshot, intelligence);
 		expect(result.valid).toBe(false);
 		expect(result.invalid).toHaveLength(1);
+	});
+
+	it("links matching implementation and test files", () => {
+		const relationships = buildFileRelationships([
+			{
+				...snapshot.files[0]!,
+				path: "src/user.ts",
+				categories: ["backend"],
+			},
+			{
+				...snapshot.files[0]!,
+				path: "src/user.test.ts",
+				categories: ["test"],
+			},
+		]);
+		expect(relationships).toContainEqual(
+			expect.objectContaining({
+				from: "src/user.ts",
+				to: "src/user.test.ts",
+				kind: "test",
+			}),
+		);
+	});
+
+	it("chunks oversized diffs on hunk boundaries with coordinates", () => {
+		const chunks = buildReviewPromptChunks(snapshot, 500);
+		expect(chunks.length).toBeGreaterThan(0);
+		expect(chunks.every((chunk) => chunk.text.length <= 1_000)).toBe(true);
+		expect(chunks.some((chunk) => /\b[LR]\d+ [ +\-]/.test(chunk.text))).toBe(
+			true,
+		);
 	});
 });

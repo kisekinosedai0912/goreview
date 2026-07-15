@@ -9,8 +9,10 @@ import {
 import { browser } from "#imports";
 import {
 	changedFileSchema,
+	codeExplanationSchema,
 	commentThreadSchema,
 	reviewCommentSchema,
+	reviewIntelligenceSchema,
 	reviewSnapshotSchema,
 	type CreateCommentInput,
 	type ChangedFile,
@@ -149,6 +151,65 @@ export default function GoReviewPanel({
 				if (!response.ok) throw new Error(response.error);
 				return reviewCommentSchema.parse(
 					(response.data as { comment: unknown }).comment,
+				);
+			},
+			async getIntelligence() {
+				const response = await sendMessage({
+					type: "goreview:intelligence",
+					owner,
+					repo,
+					number,
+					generate: false,
+				});
+				if (!response.ok) throw new Error(response.error);
+				const body = response.data as {
+					intelligence: unknown;
+					aiAvailable?: unknown;
+					aiError?: unknown;
+				};
+				return {
+					intelligence: reviewIntelligenceSchema.parse(body.intelligence),
+					aiAvailable: body.aiAvailable === true,
+					aiError:
+						typeof body.aiError === "string" ? body.aiError : undefined,
+				};
+			},
+			async generateIntelligence() {
+				if (state.phase !== "ready") throw new Error("Review is not loaded.");
+				const response = await sendMessage({
+					type: "goreview:intelligence",
+					owner,
+					repo,
+					number,
+					generate: true,
+					expectedHeadSha: state.snapshot.headSha,
+				});
+				if (!response.ok) throw new Error(response.error);
+				const body = response.data as {
+					intelligence: unknown;
+					aiError?: unknown;
+				};
+				return {
+					intelligence: reviewIntelligenceSchema.parse(body.intelligence),
+					aiAvailable: true,
+					aiError:
+						typeof body.aiError === "string" ? body.aiError : undefined,
+				};
+			},
+			async explainCode(input) {
+				if (state.phase !== "ready") throw new Error("Review is not loaded.");
+				const response = await sendMessage({
+					type: "goreview:explain",
+					owner,
+					repo,
+					number,
+					path: input.path,
+					anchor: input.anchor,
+					expectedHeadSha: state.snapshot.headSha,
+				});
+				if (!response.ok) throw new Error(response.error);
+				return codeExplanationSchema.parse(
+					(response.data as { explanation: unknown }).explanation,
 				);
 			},
 		}),

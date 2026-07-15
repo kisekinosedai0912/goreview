@@ -84,6 +84,32 @@ export default defineBackground(() => {
 								body: JSON.stringify({ body: message.body }),
 							},
 						);
+					case "goreview:intelligence":
+						return callBackend(
+							`/api/reviews/${message.owner}/${message.repo}/${message.number}/intelligence`,
+							message.generate
+								? {
+										method: "POST",
+										headers: { "x-goreview-action": "intelligence" },
+										body: JSON.stringify({
+											expectedHeadSha: message.expectedHeadSha,
+										}),
+									}
+								: undefined,
+						);
+					case "goreview:explain":
+						return callBackend(
+							`/api/reviews/${message.owner}/${message.repo}/${message.number}/intelligence/explain`,
+							{
+								method: "POST",
+								headers: { "x-goreview-action": "intelligence" },
+								body: JSON.stringify({
+									path: message.path,
+									anchor: message.anchor,
+									expectedHeadSha: message.expectedHeadSha,
+								}),
+							},
+						);
 				}
 			};
 

@@ -11,21 +11,27 @@ import {
 import {
 	explainEvents,
 	type ChangedFile,
+	type CodeExplanation,
+	type CommentAnchor,
 	type CommentThread,
 	type CreateCommentInput,
 	type ReplyToCommentInput,
 	type ReviewComment,
+	type ReviewIntelligenceResult,
 	type ReviewSnapshot,
 } from "@goreview/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import ReviewMeta from "../ReviewMeta";
 import type { ViewMode } from "../DiffViewer";
+import IntelligencePanel from "./IntelligencePanel";
+import ExplanationCard from "./ExplanationCard";
 
 const DiffViewer = lazy(() => import("../DiffViewer"));
 const ExplanationList = lazy(() => import("../ExplanationList"));
 
 export type ReviewFeedHandle = {
 	scrollToPath(path: string): void;
+	scrollToAnchor(anchor: CommentAnchor): void;
 };
 
 type ReviewFeedProps = {
@@ -42,6 +48,14 @@ type ReviewFeedProps = {
 	commentThreads: CommentThread[];
 	onCreateComment?: (input: CreateCommentInput) => Promise<ReviewComment>;
 	onReplyToComment?: (input: ReplyToCommentInput) => Promise<ReviewComment>;
+	intelligence: ReviewIntelligenceResult;
+	generatingIntelligence: boolean;
+	onGenerateIntelligence?: () => void;
+	fileExplanations: ReadonlyMap<string, CodeExplanation>;
+	lineExplanations: ReadonlyMap<string, CodeExplanation>;
+	explainingKeys: ReadonlySet<string>;
+	onExplainFile?: (path: string) => void;
+	onExplainLine?: (anchor: CommentAnchor) => void;
 };
 
 const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
@@ -60,6 +74,14 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 			commentThreads,
 			onCreateComment,
 			onReplyToComment,
+			intelligence,
+			generatingIntelligence,
+			onGenerateIntelligence,
+			fileExplanations,
+			lineExplanations,
+			explainingKeys,
+			onExplainFile,
+			onExplainLine,
 		},
 		ref,
 	) {
@@ -69,7 +91,7 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 		const virtualizer = useVirtualizer({
 			count: files.length + 1,
 			getScrollElement: () => scrollRef.current,
-			estimateSize: (index) => (index === 0 ? 210 : 520),
+			estimateSize: (index) => (index === 0 ? 920 : 520),
 			overscan: 2,
 			getItemKey: (index) => (index === 0 ? "review-meta" : paths[index - 1]!),
 			onChange: (instance) => {
@@ -93,20 +115,46 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 			},
 		});
 
+		const scrollToPath = useCallback(
+			(path: string) => {
+				const index = paths.indexOf(path);
+				if (index >= 0) {
+					virtualizer.scrollToIndex(index + 1, {
+						align: "start",
+						behavior: "smooth",
+					});
+				}
+			},
+			[paths, virtualizer],
+		);
+
+		const scrollToAnchor = useCallback(
+			(anchor: CommentAnchor) => {
+				scrollToPath(anchor.path);
+				const key = `${anchor.path}:${anchor.side}:${anchor.line}`;
+				let attempts = 0;
+				const reveal = () => {
+					const escaped = typeof CSS !== "undefined" ? CSS.escape(key) : key;
+					const element = scrollRef.current?.querySelector<HTMLElement>(
+						`[data-review-anchors~="${escaped}"]`,
+					);
+					if (element) {
+						element.scrollIntoView({ behavior: "smooth", block: "center" });
+						element.focus({ preventScroll: true });
+						return;
+					}
+					attempts += 1;
+					if (attempts < 10) window.setTimeout(reveal, 120);
+				};
+				window.setTimeout(reveal, 120);
+			},
+			[scrollToPath],
+		);
+
 		useImperativeHandle(
 			ref,
-			() => ({
-				scrollToPath(path: string) {
-					const index = paths.indexOf(path);
-					if (index >= 0) {
-						virtualizer.scrollToIndex(index + 1, {
-							align: "start",
-							behavior: "smooth",
-						});
-					}
-				},
-			}),
-			[paths, virtualizer],
+			() => ({ scrollToPath, scrollToAnchor }),
+			[scrollToAnchor, scrollToPath],
 		);
 
 		const measure = useCallback(
@@ -144,6 +192,12 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 									style={{ transform: `translateY(${virtualItem.start}px)` }}
 								>
 									<ReviewMeta snapshot={{ ...snapshot, files }} />
+									<IntelligencePanel
+										result={intelligence}
+										generating={generatingIntelligence}
+										onGenerate={onGenerateIntelligence}
+										onNavigate={scrollToAnchor}
+									/>
 								</div>
 							);
 						}
@@ -182,7 +236,24 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 										/>
 										<span>Viewed</span>
 									</label>
+									{onExplainFile ? (
+										<button
+											type="button"
+											className="review-file__explain"
+											onClick={() => onExplainFile(file.path)}
+											disabled={explainingKeys.has(`file:${file.path}`)}
+										>
+											{explainingKeys.has(`file:${file.path}`)
+												? "Explaining…"
+												: "Explain file"}
+										</button>
+									) : null}
 								</header>
+								{fileExplanations.get(file.path) ? (
+									<ExplanationCard
+										explanation={fileExplanations.get(file.path)!}
+									/>
+								) : null}
 
 								{error ? (
 									<p className="panel-fallback">{error}</p>
@@ -205,6 +276,9 @@ const ReviewFeed = forwardRef<ReviewFeedHandle, ReviewFeedProps>(
 												commentThreads={commentThreads}
 												onCreateComment={onCreateComment}
 												onReplyToComment={onReplyToComment}
+												lineExplanations={lineExplanations}
+												explainingAnchors={explainingKeys}
+												onExplainLine={onExplainLine}
 											/>
 										</Suspense>
 										<Suspense

@@ -7,6 +7,7 @@ import {
 } from "react";
 import type {
 	ChangedFile,
+	CodeExplanation,
 	CommentAnchor,
 	CommentThread,
 	CreateCommentInput,
@@ -24,6 +25,7 @@ import {
 } from "../highlight/use-highlighted";
 import type { TokenLine, TokenSpan } from "../highlight/types";
 import InlineComments from "./review/InlineComments";
+import { reviewAnchorKey } from "./review/anchor-key";
 
 export type ViewMode = "unified" | "split";
 
@@ -55,6 +57,9 @@ type DiffViewerProps = {
 	commentThreads?: CommentThread[];
 	onCreateComment?: (input: CreateCommentInput) => Promise<ReviewComment>;
 	onReplyToComment?: (input: ReplyToCommentInput) => Promise<ReviewComment>;
+	lineExplanations?: ReadonlyMap<string, CodeExplanation>;
+	explainingAnchors?: ReadonlySet<string>;
+	onExplainLine?: (anchor: CommentAnchor) => void;
 };
 
 const LINE_HEIGHT = 24;
@@ -133,6 +138,9 @@ function DiffViewer({
 	commentThreads = [],
 	onCreateComment,
 	onReplyToComment,
+	lineExplanations = new Map(),
+	explainingAnchors = new Set(),
+	onExplainLine,
 }: DiffViewerProps) {
 	const [localMode, setLocalMode] = useState<ViewMode>("split");
 	const mode = controlledMode ?? localMode;
@@ -314,6 +322,9 @@ function DiffViewer({
 					threads={commentThreads}
 					onCreateComment={onCreateComment}
 					onReplyToComment={onReplyToComment}
+					lineExplanations={lineExplanations}
+					explainingAnchors={explainingAnchors}
+					onExplainLine={onExplainLine}
 				/>
 			) : (
 				<SplitPair
@@ -326,6 +337,9 @@ function DiffViewer({
 					threads={commentThreads}
 					onCreateComment={onCreateComment}
 					onReplyToComment={onReplyToComment}
+					lineExplanations={lineExplanations}
+					explainingAnchors={explainingAnchors}
+					onExplainLine={onExplainLine}
 				/>
 			),
 		[
@@ -335,7 +349,10 @@ function DiffViewer({
 			newTokens,
 			oldTokens,
 			onCreateComment,
+			onExplainLine,
 			onReplyToComment,
+			explainingAnchors,
+			lineExplanations,
 			toggleHunk,
 		],
 	);
@@ -446,6 +463,9 @@ type CommentableLineProps = {
 	threads: CommentThread[];
 	onCreateComment?: (input: CreateCommentInput) => Promise<ReviewComment>;
 	onReplyToComment?: (input: ReplyToCommentInput) => Promise<ReviewComment>;
+	lineExplanations: ReadonlyMap<string, CodeExplanation>;
+	explainingAnchors: ReadonlySet<string>;
+	onExplainLine?: (anchor: CommentAnchor) => void;
 };
 
 function threadsAtAnchors(
@@ -594,6 +614,9 @@ const UnifiedLine = memo(function UnifiedLine({
 	threads,
 	onCreateComment,
 	onReplyToComment,
+	lineExplanations,
+	explainingAnchors,
+	onExplainLine,
 }: LineTokensProps & CommentableLineProps) {
 	const anchors = commentable
 		? anchorsForDiffLine(path, line).filter(
@@ -615,6 +638,16 @@ const UnifiedLine = memo(function UnifiedLine({
 				threads={threadsAtAnchors(threads, anchors)}
 				onCreate={onCreateComment}
 				onReply={onReplyToComment}
+				onExplain={onExplainLine}
+				explaining={anchors.some((anchor) =>
+					explainingAnchors.has(reviewAnchorKey(anchor)),
+				)}
+				explanation={anchors
+					.map((anchor) => lineExplanations.get(reviewAnchorKey(anchor)))
+					.find((value) => value !== undefined)}
+				explanationAnchor={anchors.find((anchor) =>
+					lineExplanations.has(reviewAnchorKey(anchor)),
+				)}
 			/>
 		</div>
 	);
@@ -630,6 +663,9 @@ const SplitPair = memo(function SplitPair({
 	threads,
 	onCreateComment,
 	onReplyToComment,
+	lineExplanations,
+	explainingAnchors,
+	onExplainLine,
 }: {
 	path: string;
 	commentable: boolean;
@@ -697,6 +733,16 @@ const SplitPair = memo(function SplitPair({
 				threads={threadsAtAnchors(threads, anchors)}
 				onCreate={onCreateComment}
 				onReply={onReplyToComment}
+				onExplain={onExplainLine}
+				explaining={anchors.some((anchor) =>
+					explainingAnchors.has(reviewAnchorKey(anchor)),
+				)}
+				explanation={anchors
+					.map((anchor) => lineExplanations.get(reviewAnchorKey(anchor)))
+					.find((value) => value !== undefined)}
+				explanationAnchor={anchors.find((anchor) =>
+					lineExplanations.has(reviewAnchorKey(anchor)),
+				)}
 			/>
 		</div>
 	);

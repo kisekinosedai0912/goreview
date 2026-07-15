@@ -11,7 +11,9 @@ import {
 import {
 	changedFileSchema,
 	commentThreadSchema,
+	codeExplanationSchema,
 	reviewCommentSchema,
+	reviewIntelligenceSchema,
 	reviewSnapshotSchema,
 	type CreateCommentInput,
 	type ChangedFile,
@@ -116,6 +118,54 @@ function ReadyReview({
 					},
 				)) as { comment: unknown };
 				return reviewCommentSchema.parse(body.comment);
+			},
+			async getIntelligence() {
+				const body = (await request(
+					`/api/reviews/${owner}/${repo}/${number}/intelligence`,
+				)) as {
+					intelligence: unknown;
+					aiAvailable?: unknown;
+					aiError?: unknown;
+				};
+				return {
+					intelligence: reviewIntelligenceSchema.parse(body.intelligence),
+					aiAvailable: body.aiAvailable === true,
+					aiError:
+						typeof body.aiError === "string" ? body.aiError : undefined,
+				};
+			},
+			async generateIntelligence() {
+				const body = (await request(
+					`/api/reviews/${owner}/${repo}/${number}/intelligence`,
+					{
+						method: "POST",
+						headers: { "x-goreview-action": "intelligence" },
+						body: JSON.stringify({ expectedHeadSha: snapshot.headSha }),
+					},
+				)) as {
+					intelligence: unknown;
+					aiError?: unknown;
+				};
+				return {
+					intelligence: reviewIntelligenceSchema.parse(body.intelligence),
+					aiAvailable: true,
+					aiError:
+						typeof body.aiError === "string" ? body.aiError : undefined,
+				};
+			},
+			async explainCode(input) {
+				const body = (await request(
+					`/api/reviews/${owner}/${repo}/${number}/intelligence/explain`,
+					{
+						method: "POST",
+						headers: { "x-goreview-action": "intelligence" },
+						body: JSON.stringify({
+							...input,
+							expectedHeadSha: snapshot.headSha,
+						}),
+					},
+				)) as { explanation: unknown };
+				return codeExplanationSchema.parse(body.explanation);
 			},
 		}),
 		[ensureFile, number, owner, repo, request, snapshot.headSha],

@@ -2,16 +2,23 @@ import { memo, useState } from "react";
 import type {
 	CommentAnchor,
 	CommentThread,
+	CodeExplanation,
 	CreateCommentInput,
 	ReplyToCommentInput,
 	ReviewComment,
 } from "@goreview/core";
+import ExplanationCard from "./ExplanationCard";
+import { explanationAsComment } from "./explanation-text";
 
 type InlineCommentsProps = {
 	anchors: CommentAnchor[];
 	threads: CommentThread[];
 	onCreate?: (input: CreateCommentInput) => Promise<ReviewComment>;
 	onReply?: (input: ReplyToCommentInput) => Promise<ReviewComment>;
+	onExplain?: (anchor: CommentAnchor) => void;
+	explaining?: boolean;
+	explanation?: CodeExplanation;
+	explanationAnchor?: CommentAnchor;
 };
 
 function CommentBody({
@@ -40,6 +47,10 @@ function InlineComments({
 	threads,
 	onCreate,
 	onReply,
+	onExplain,
+	explaining = false,
+	explanation,
+	explanationAnchor,
 }: InlineCommentsProps) {
 	const [activeAnchor, setActiveAnchor] = useState<CommentAnchor | null>(null);
 	const [body, setBody] = useState("");
@@ -78,10 +89,16 @@ function InlineComments({
 		}
 	};
 
-	if (!onCreate && threads.length === 0) return null;
+	if (!onCreate && !onExplain && threads.length === 0 && !explanation) return null;
 
 	return (
-		<div className="inline-comment">
+		<div
+			className="inline-comment"
+			data-review-anchors={anchors
+				.map((anchor) => `${anchor.path}:${anchor.side}:${anchor.line}`)
+				.join(" ")}
+			tabIndex={-1}
+		>
 			{threads.map((thread) => (
 				<div key={thread.rootId} className="inline-comment__thread">
 					{thread.comments.map((comment) => (
@@ -158,21 +175,49 @@ function InlineComments({
 						</button>
 					</div>
 				</div>
-			) : onCreate ? (
+			) : onCreate || onExplain ? (
 				<div className="inline-comment__triggers">
 					{anchors.map((anchor) => (
-						<button
+						<span
 							key={`${anchor.side}:${anchor.line}`}
-							type="button"
-							className="inline-comment__trigger"
-							onClick={() => setActiveAnchor(anchor)}
-							aria-label={`Comment on ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
+							className="inline-comment__trigger-group"
 						>
-							+ Comment {anchor.side === "LEFT" ? "old" : "new"} line{" "}
-							{anchor.line}
-						</button>
+							{onCreate ? (
+								<button
+									type="button"
+									className="inline-comment__trigger"
+									onClick={() => setActiveAnchor(anchor)}
+									aria-label={`Comment on ${anchor.side === "LEFT" ? "old" : "new"} line ${anchor.line}`}
+								>
+									+ Comment
+								</button>
+							) : null}
+							{onExplain ? (
+								<button
+									type="button"
+									className="inline-comment__trigger inline-comment__trigger--explain"
+									onClick={() => onExplain(anchor)}
+									disabled={explaining}
+								>
+									{explaining ? "Explaining…" : "Explain line"}
+								</button>
+							) : null}
+						</span>
 					))}
 				</div>
+			) : null}
+			{explanation ? (
+				<ExplanationCard
+					explanation={explanation}
+					onUseAsComment={
+						onCreate && explanationAnchor
+							? () => {
+									setActiveAnchor(explanationAnchor);
+									setBody(explanationAsComment(explanation));
+								}
+							: undefined
+					}
+				/>
 			) : null}
 			{error ? <p className="inline-comment__error">{error}</p> : null}
 		</div>

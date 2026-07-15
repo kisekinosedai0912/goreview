@@ -80,3 +80,23 @@ export function snapshotCacheKey(
 ): string {
 	return `snapshot:${owner}/${repo}#${number}@${headSha}`;
 }
+
+export function intelligenceCacheKey(
+	owner: string,
+	repo: string,
+	headSha: string,
+	model: string,
+	schemaVersion = 1,
+): string {
+	return `intelligence:v${schemaVersion}:${owner}/${repo}@${headSha}:${model}`;
+}
+
+export function fileSummaryCacheKey(
+	owner: string,
+	repo: string,
+	headSha: string,
+	model: string,
+	path: string,
+): string {
+	return `file-summary:v1:${owner}/${repo}@${headSha}:${model}:${path}`;
+}

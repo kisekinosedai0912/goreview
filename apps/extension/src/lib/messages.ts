@@ -41,6 +41,25 @@ export type CommentReplyRequest = {
 	body: string;
 };
 
+export type IntelligenceRequest = {
+	type: "goreview:intelligence";
+	owner: string;
+	repo: string;
+	number: number;
+	generate: boolean;
+	expectedHeadSha?: string;
+};
+
+export type ExplainRequest = {
+	type: "goreview:explain";
+	owner: string;
+	repo: string;
+	number: number;
+	path: string;
+	anchor?: CommentAnchor;
+	expectedHeadSha: string;
+};
+
 export type BackendResponse =
 	| { ok: true; data: unknown }
 	| { ok: false; status: number; error: string };
@@ -50,4 +69,6 @@ export type ExtensionMessage =
 	| FileRequest
 	| CommentListRequest
 	| CommentCreateRequest
-	| CommentReplyRequest;
+	| CommentReplyRequest
+	| IntelligenceRequest
+	| ExplainRequest;

@@ -8,13 +8,17 @@ import {
 } from "react";
 import {
 	getOrderedFiles,
+	buildDeterministicIntelligence,
 	type ChangeCategory,
 	type ChangedFile,
+	type CodeExplanation,
+	type CommentAnchor,
 	type CommentThread,
 	type CreateCommentInput,
 	type ReplyToCommentInput,
 	type ReviewComment,
 	type ReviewDataSource,
+	type ReviewIntelligenceResult,
 	type ReviewSnapshot,
 } from "@goreview/core";
 import FileJumper from "./FileJumper";
@@ -65,6 +69,22 @@ function ReviewWorkspace({
 	>(new Set());
 	const [mode, setMode] = useState<ViewMode>(storedViewMode);
 	const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
+	const [intelligence, setIntelligence] = useState<ReviewIntelligenceResult>(
+		() => ({
+			intelligence: buildDeterministicIntelligence(snapshot),
+			aiAvailable: false,
+		}),
+	);
+	const [generatingIntelligence, setGeneratingIntelligence] = useState(false);
+	const [fileExplanations, setFileExplanations] = useState<
+		ReadonlyMap<string, CodeExplanation>
+	>(new Map());
+	const [lineExplanations, setLineExplanations] = useState<
+		ReadonlyMap<string, CodeExplanation>
+	>(new Map());
+	const [explainingKeys, setExplainingKeys] = useState<ReadonlySet<string>>(
+		new Set(),
+	);
 	const feedRef = useRef<ReviewFeedHandle | null>(null);
 	const inFlightRef = useRef(new Set<string>());
 
@@ -76,6 +96,14 @@ function ReviewWorkspace({
 		setLoadingPaths(new Set());
 		setErrors(new Map());
 		setCommentThreads([]);
+		setIntelligence({
+			intelligence: buildDeterministicIntelligence(snapshot),
+			aiAvailable: false,
+		});
+		setGeneratingIntelligence(false);
+		setFileExplanations(new Map());
+		setLineExplanations(new Map());
+		setExplainingKeys(new Set());
 		inFlightRef.current.clear();
 	}
 
@@ -298,6 +326,77 @@ function ReviewWorkspace({
 		};
 	}, [dataSource]);
 
+	useEffect(() => {
+		if (!dataSource?.getIntelligence) return;
+		let cancelled = false;
+		void dataSource
+			.getIntelligence()
+			.then((result) => {
+				if (!cancelled) setIntelligence(result);
+			})
+			.catch(() => {
+				// The deterministic in-memory result remains visible.
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [dataSource]);
+
+	const generateIntelligence = useCallback(async () => {
+		if (!dataSource?.generateIntelligence) return;
+		setGeneratingIntelligence(true);
+		try {
+			setIntelligence(await dataSource.generateIntelligence());
+		} catch (error) {
+			setIntelligence((current) => ({
+				...current,
+				aiError:
+					error instanceof Error
+						? error.message
+						: "AI review is temporarily unavailable.",
+			}));
+		} finally {
+			setGeneratingIntelligence(false);
+		}
+	}, [dataSource]);
+
+	const explainCode = useCallback(
+		async (path: string, anchor?: CommentAnchor) => {
+			if (!dataSource?.explainCode) return;
+			const key = anchor
+				? `${anchor.path}:${anchor.side}:${anchor.line}`
+				: `file:${path}`;
+			setExplainingKeys((current) => new Set(current).add(key));
+			try {
+				const explanation = await dataSource.explainCode({ path, anchor });
+				if (anchor) {
+					setLineExplanations((current) =>
+						new Map(current).set(key, explanation),
+					);
+				} else {
+					setFileExplanations((current) =>
+						new Map(current).set(path, explanation),
+					);
+				}
+			} catch (error) {
+				setIntelligence((current) => ({
+					...current,
+					aiError:
+						error instanceof Error
+							? error.message
+							: "Code explanation is temporarily unavailable.",
+				}));
+			} finally {
+				setExplainingKeys((current) => {
+					const next = new Set(current);
+					next.delete(key);
+					return next;
+				});
+			}
+		},
+		[dataSource],
+	);
+
 	return (
 		<div className="review-workspace">
 			<aside className="review-workspace__sidebar">
@@ -365,6 +464,26 @@ function ReviewWorkspace({
 						}
 						onReplyToComment={
 							dataSource?.replyToComment ? replyToComment : undefined
+						}
+						intelligence={intelligence}
+						generatingIntelligence={generatingIntelligence}
+						onGenerateIntelligence={
+							dataSource?.generateIntelligence && intelligence.aiAvailable
+								? () => void generateIntelligence()
+								: undefined
+						}
+						fileExplanations={fileExplanations}
+						lineExplanations={lineExplanations}
+						explainingKeys={explainingKeys}
+						onExplainFile={
+							dataSource?.explainCode
+								? (path) => void explainCode(path)
+								: undefined
+						}
+						onExplainLine={
+							dataSource?.explainCode
+								? (anchor) => void explainCode(anchor.path, anchor)
+								: undefined
 						}
 					/>
 				</div>

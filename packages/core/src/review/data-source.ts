@@ -16,6 +16,12 @@ export type ExplainCodeInput = {
 	anchor?: CommentAnchor;
 };
 
+export type ReviewIntelligenceResult = {
+	intelligence: ReviewIntelligence;
+	aiAvailable: boolean;
+	aiError?: string;
+};
+
 /**
  * Runtime boundary shared by the hosted app, browser extension, and fixture
  * demo. UI components never know whether operations are HTTP, extension
@@ -26,6 +32,7 @@ export type ReviewDataSource = {
 	listCommentThreads?(): Promise<CommentThread[]>;
 	createComment?(input: CreateCommentInput): Promise<ReviewComment>;
 	replyToComment?(input: ReplyToCommentInput): Promise<ReviewComment>;
-	getIntelligence?(): Promise<ReviewIntelligence>;
+	getIntelligence?(): Promise<ReviewIntelligenceResult>;
+	generateIntelligence?(): Promise<ReviewIntelligenceResult>;
 	explainCode?(input: ExplainCodeInput): Promise<CodeExplanation>;
 };

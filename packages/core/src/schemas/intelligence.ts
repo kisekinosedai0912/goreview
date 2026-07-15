@@ -40,11 +40,19 @@ export const reviewOrderItemSchema = z.object({
 	dependsOn: z.array(z.string()),
 });
 
+export const fileRelationshipSchema = z.object({
+	from: z.string(),
+	to: z.string(),
+	kind: z.enum(["test", "dependency", "feature", "directory"]),
+	reason: z.string(),
+});
+
 export const reviewIntelligenceSchema = z.object({
 	version: z.literal(1),
 	source: z.enum(["deterministic", "ai"]),
 	summary: z.string(),
 	changeStory: z.array(changeStoryStepSchema),
+	relationships: z.array(fileRelationshipSchema),
 	risks: z.array(riskHotspotSchema),
 	testGaps: z.array(testGapSchema),
 	reviewOrder: z.array(reviewOrderItemSchema),
@@ -66,5 +74,6 @@ export type RiskHotspot = z.infer<typeof riskHotspotSchema>;
 export type ChangeStoryStep = z.infer<typeof changeStoryStepSchema>;
 export type TestGap = z.infer<typeof testGapSchema>;
 export type ReviewOrderItem = z.infer<typeof reviewOrderItemSchema>;
+export type FileRelationship = z.infer<typeof fileRelationshipSchema>;
 export type ReviewIntelligence = z.infer<typeof reviewIntelligenceSchema>;
 export type CodeExplanation = z.infer<typeof codeExplanationSchema>;

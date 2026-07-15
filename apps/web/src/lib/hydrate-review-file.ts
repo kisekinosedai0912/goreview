@@ -25,3 +25,25 @@ export async function hydrateReviewFile(
 	]);
 	return enrichChangedFile({ ...shell, oldContent, newContent });
 }
+
+export async function hydrateSnapshotForReview(
+	octokit: Octokit,
+	owner: string,
+	repo: string,
+	snapshot: ReviewSnapshot,
+): Promise<ReviewSnapshot> {
+	const files: ChangedFile[] = [];
+	const concurrency = 4;
+	for (let start = 0; start < snapshot.files.length; start += concurrency) {
+		const batch = snapshot.files.slice(start, start + concurrency);
+		const hydrated = await Promise.all(
+			batch.map((file) =>
+				hydrateReviewFile(octokit, owner, repo, snapshot, file.path),
+			),
+		);
+		files.push(
+			...hydrated.filter((file): file is ChangedFile => file !== null),
+		);
+	}
+	return { ...snapshot, files };
+}
