@@ -42,6 +42,12 @@ variable "redis_region" {
   default     = "ap-southeast-1"
 }
 
+variable "ai_review_model" {
+  description = "Current Vercel AI Gateway model used for opt-in review intelligence."
+  type        = string
+  default     = "openai/gpt-5.6-sol"
+}
+
 # --- GitHub App credentials (created manually on github.com; see infra/README.md) ---
 
 variable "github_app_id" {

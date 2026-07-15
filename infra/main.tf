@@ -64,6 +64,12 @@ resource "vercel_project_environment_variables" "web" {
         target    = ["production", "preview"]
         sensitive = true
       },
+      {
+        key       = "AI_REVIEW_MODEL"
+        value     = var.ai_review_model
+        target    = ["production", "preview", "development"]
+        sensitive = false
+      },
     ],
     var.app_url != "" ? [
       {

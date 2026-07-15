@@ -8,6 +8,9 @@ vercel_api_token = ""
 upstash_email   = ""
 upstash_api_key = ""
 
+# Model verified against the live Vercel AI Gateway catalog:
+# ai_review_model = "openai/gpt-5.6-sol"
+
 # From the GitHub App you create at github.com/settings/apps (see README):
 github_app_id          = ""
 github_app_private_key = ""
