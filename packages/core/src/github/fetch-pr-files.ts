@@ -5,6 +5,8 @@ type GitHubPullFile = {
 	filename: string;
 	previous_filename?: string;
 	status: string;
+	additions?: number;
+	deletions?: number;
 };
 
 function mapStatus(
@@ -63,5 +65,7 @@ export function toChangedFileShell(file: GitHubPullFile): ChangedFile | null {
 		newContent: null,
 		categories: ["unknown"],
 		events: [],
+		additions: file.additions,
+		deletions: file.deletions,
 	};
 }

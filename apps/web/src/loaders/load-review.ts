@@ -1,6 +1,6 @@
 import { samplePr } from "@goreview/core/fixtures";
 import type { ReviewLoader } from "@goreview/core/github";
-import type { ReviewSnapshot } from "@goreview/core";
+import { withComputedDiffs, type ReviewSnapshot } from "@goreview/core";
 
 export type LoadReviewResult = {
 	source: "github" | "fixture";
@@ -58,7 +58,7 @@ export async function loadReview(): Promise<LoadReviewResult> {
 	const token = readEnv("VITE_GITHUB_TOKEN");
 
 	if (!coords || !token) {
-		return { source: "fixture", snapshot: samplePr };
+		return { source: "fixture", snapshot: withComputedDiffs(samplePr) };
 	}
 
 	try {
