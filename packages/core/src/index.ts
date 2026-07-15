@@ -17,3 +17,10 @@ export {
 	type FileTreeNode,
 	type TreeStats,
 } from "./tree/build-tree";
+export {
+	buildAnnotations,
+	buildReviewReport,
+	renderTreeText,
+	type CheckAnnotation,
+	type ReviewReport,
+} from "./report/markdown";
