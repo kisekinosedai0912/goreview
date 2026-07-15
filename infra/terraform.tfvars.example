@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+# Provider credentials can also come from env vars:
+#   VERCEL_API_TOKEN, UPSTASH_EMAIL, UPSTASH_API_KEY
+
+vercel_api_token = ""
+# vercel_team    = "my-team-slug"
+
+upstash_email   = ""
+upstash_api_key = ""
+
+# From the GitHub App you create at github.com/settings/apps (see README):
+github_app_id          = ""
+github_app_private_key = ""
+github_webhook_secret  = ""
+github_client_id       = ""
+github_client_secret   = ""
+
+# After the first deploy, set the assigned URL and re-apply:
+# app_url = "https://goreview.vercel.app"

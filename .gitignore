@@ -11,6 +11,13 @@ next-env.d.ts
 .output
 .wxt
 
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
 # Environment
 .env
 .env.*
