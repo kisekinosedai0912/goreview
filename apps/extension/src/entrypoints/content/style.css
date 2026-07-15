@@ -1,0 +1,82 @@
+/*
+ * Shadow-root shell for the injected panel. The shared UI stylesheet
+ * hangs its tokens off [data-theme=...], which the wrapper provides.
+ */
+
+.goreview-root {
+	position: fixed;
+	inset: 0;
+	z-index: 2147483000;
+	display: flex;
+	flex-direction: column;
+	font-family: var(--sans);
+	color: var(--ink);
+	background:
+		radial-gradient(1200px 600px at 85% -10%, var(--glow-a), transparent 60%),
+		radial-gradient(900px 500px at -10% 110%, var(--glow-b), transparent 55%),
+		linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+}
+
+.goreview-root__bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.5rem 1rem;
+	border-bottom: 1px solid var(--line);
+	background: var(--surface-raised);
+}
+
+.goreview-root__title {
+	font-size: 0.85rem;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+.goreview-root__pr {
+	font-family: var(--mono);
+	font-size: 0.75rem;
+	color: var(--quiet);
+}
+
+.goreview-root__close {
+	padding: 0.35rem 0.75rem;
+	border: 1px solid var(--line);
+	border-radius: 0.4rem;
+	background: transparent;
+	color: var(--ink);
+	font-size: 0.75rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.goreview-root__close:hover {
+	border-color: var(--brand);
+}
+
+.goreview-root__body {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+}
+
+.goreview-root__body > * {
+	flex: 1;
+	min-width: 0;
+}
+
+.goreview-root__status {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 1;
+	color: var(--quiet);
+	font-family: var(--mono);
+	font-size: 0.8rem;
+	padding: 2rem;
+	text-align: center;
+}
+
+.goreview-root__status a {
+	color: var(--brand);
+}

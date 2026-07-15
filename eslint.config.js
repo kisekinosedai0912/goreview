@@ -34,8 +34,9 @@ export default defineConfig([
     },
   },
   {
-    // Next.js app router files legitimately export metadata/config
-    files: ['apps/web/app/**'],
+    // Next.js app router files legitimately export metadata/config;
+    // extension entrypoints are mount points, not refreshable modules
+    files: ['apps/web/app/**', 'apps/extension/src/entrypoints/**'],
     rules: {
       'react-refresh/only-export-components': 'off',
     },
