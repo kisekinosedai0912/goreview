@@ -459,6 +459,128 @@ body {
 	}
 }
 
+/* --- Home / landing -------------------------------------------------- */
+
+.home__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding: var(--space-5) var(--space-6);
+	border-bottom: 1px solid var(--line);
+}
+
+.home__title {
+	font-size: clamp(1.6rem, 3vw, 2.1rem);
+	font-weight: 700;
+	letter-spacing: -0.04em;
+}
+
+.home__tagline {
+	margin-top: 0.4rem;
+	max-width: 46ch;
+	color: var(--quiet);
+	font-size: 0.9rem;
+	line-height: 1.5;
+}
+
+.home__actions {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--space-2);
+}
+
+.home__auth {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.home__user {
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	color: var(--ink-soft);
+}
+
+.home__signin,
+.home__signout {
+	display: inline-flex;
+	padding: 0.45rem 0.85rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-2);
+	background: var(--surface-raised);
+	color: var(--ink);
+	font-size: 0.8rem;
+	font-weight: 600;
+	text-decoration: none;
+	cursor: pointer;
+	transition: border-color 0.2s var(--ease);
+}
+
+.home__signin:hover,
+.home__signout:hover {
+	border-color: var(--brand);
+}
+
+.home__hint {
+	max-width: 34ch;
+	color: var(--quiet);
+	font-size: 0.72rem;
+	text-align: right;
+}
+
+.open-pr {
+	display: flex;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.open-pr__input {
+	width: min(320px, 70vw);
+	padding: 0.45rem 0.7rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-2);
+	background: var(--surface-raised);
+	color: var(--ink);
+	font-family: var(--mono);
+	font-size: 0.78rem;
+	outline: none;
+	transition: border-color 0.2s var(--ease);
+}
+
+.open-pr__input:focus-visible {
+	border-color: var(--brand);
+}
+
+.open-pr__input[aria-invalid] {
+	border-color: var(--before);
+}
+
+.open-pr__submit {
+	padding: 0.45rem 0.9rem;
+	border: none;
+	border-radius: var(--radius-2);
+	background: var(--brand);
+	color: #fff;
+	font-size: 0.8rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+[data-theme="dark"] .open-pr__submit {
+	color: #101612;
+}
+
+.open-pr__error {
+	width: 100%;
+	color: var(--before);
+	font-size: 0.72rem;
+	text-align: right;
+}
+
 .review-workspace__content {
 	flex: 1;
 	min-height: 0;

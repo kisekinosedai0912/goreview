@@ -1,25 +1,44 @@
-import { useCallback, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
+
+/**
+ * Review-progress tracking: which files the reviewer marked as viewed,
+ * persisted per PR (keyed by repo + head SHA) in localStorage. Backed by
+ * a module-level store so SSR renders empty and hydration stays clean.
+ */
+
+const EMPTY: ReadonlySet<string> = new Set();
+
+const snapshots = new Map<string, ReadonlySet<string>>();
+const listeners = new Set<() => void>();
 
 function storageKeyFor(reviewKey: string): string {
 	return `goreview-viewed:${reviewKey}`;
 }
 
-function readViewed(reviewKey: string): ReadonlySet<string> {
-	if (typeof window === "undefined") return new Set();
+function readFromStorage(reviewKey: string): ReadonlySet<string> {
 	try {
 		const raw = window.localStorage.getItem(storageKeyFor(reviewKey));
-		if (!raw) return new Set();
+		if (!raw) return EMPTY;
 		const parsed: unknown = JSON.parse(raw);
 		return Array.isArray(parsed)
 			? new Set(parsed.filter((item): item is string => typeof item === "string"))
-			: new Set();
+			: EMPTY;
 	} catch {
-		return new Set();
+		return EMPTY;
 	}
 }
 
-function persistViewed(reviewKey: string, viewed: ReadonlySet<string>): void {
-	if (typeof window === "undefined") return;
+function getSnapshot(reviewKey: string): ReadonlySet<string> {
+	let snapshot = snapshots.get(reviewKey);
+	if (!snapshot) {
+		snapshot = readFromStorage(reviewKey);
+		snapshots.set(reviewKey, snapshot);
+	}
+	return snapshot;
+}
+
+function setSnapshot(reviewKey: string, viewed: ReadonlySet<string>): void {
+	snapshots.set(reviewKey, viewed);
 	try {
 		window.localStorage.setItem(
 			storageKeyFor(reviewKey),
@@ -28,33 +47,28 @@ function persistViewed(reviewKey: string, viewed: ReadonlySet<string>): void {
 	} catch {
 		// Storage full or blocked; viewed state just won't survive reloads.
 	}
+	for (const listener of listeners) listener();
 }
 
-/**
- * Review-progress tracking: which files the reviewer marked as viewed,
- * persisted per PR (keyed by repo + head SHA) in localStorage.
- */
-export function useViewedFiles(reviewKey: string) {
-	const [viewed, setViewed] = useState<ReadonlySet<string>>(() =>
-		readViewed(reviewKey),
-	);
+function subscribe(listener: () => void): () => void {
+	listeners.add(listener);
+	return () => listeners.delete(listener);
+}
 
-	// Re-read when the review changes (render-phase reset).
-	const [prevKey, setPrevKey] = useState(reviewKey);
-	if (prevKey !== reviewKey) {
-		setPrevKey(reviewKey);
-		setViewed(readViewed(reviewKey));
-	}
+export function useViewedFiles(reviewKey: string) {
+	const viewed = useSyncExternalStore(
+		subscribe,
+		() => getSnapshot(reviewKey),
+		() => EMPTY,
+	);
 
 	const toggleViewed = useCallback(
 		(path: string) => {
-			setViewed((current) => {
-				const next = new Set(current);
-				if (next.has(path)) next.delete(path);
-				else next.add(path);
-				persistViewed(reviewKey, next);
-				return next;
-			});
+			const current = getSnapshot(reviewKey);
+			const next = new Set(current);
+			if (next.has(path)) next.delete(path);
+			else next.add(path);
+			setSnapshot(reviewKey, next);
 		},
 		[reviewKey],
 	);

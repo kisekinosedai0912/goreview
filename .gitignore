@@ -6,6 +6,10 @@ node_modules
 dist
 dist-ssr
 *.local
+.next
+next-env.d.ts
+.output
+.wxt
 
 # Environment
 .env

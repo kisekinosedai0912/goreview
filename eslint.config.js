@@ -33,4 +33,11 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  {
+    // Next.js app router files legitimately export metadata/config
+    files: ['apps/web/app/**'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

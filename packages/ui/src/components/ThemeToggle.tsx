@@ -1,11 +1,25 @@
-import { memo, useCallback, useId, useState } from "react";
+import {
+	memo,
+	useCallback,
+	useId,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { applyTheme, getStoredTheme, type Theme } from "../lib/theme";
 
+const emptySubscribe = () => () => {};
+
 function ThemeToggle() {
+	// SSR renders light; the real preference appears after hydration.
+	const hydrated = useSyncExternalStore(
+		emptySubscribe,
+		() => true,
+		() => false,
+	);
 	const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
-	const isDark = theme === "dark";
+	const isDark = hydrated && theme === "dark";
 	const id = useId();
 
 	const onCheckedChange = useCallback((checked: boolean) => {
