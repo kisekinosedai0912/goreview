@@ -248,17 +248,7 @@ const SplitPair = memo(function SplitPair({
 			]
 		: [];
 	return (
-		<div
-			className="diff-line-block"
-			data-split
-			data-single-side={
-				file.status === "added"
-					? "right"
-					: file.status === "deleted"
-						? "left"
-						: undefined
-			}
-		>
+		<div className="diff-line-block" data-split>
 			<div className="diff-pair">
 				<div
 					className="diff-line diff-line--half"

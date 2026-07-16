@@ -159,19 +159,9 @@ function DiffViewer({
 					</span>
 				</div>
 				{mode === "split" ? (
-					<div
-						className="diff-viewer__columns"
-						data-single-side={
-							file.status === "added"
-								? "right"
-								: file.status === "deleted"
-									? "left"
-									: undefined
-						}
-						aria-hidden="true"
-					>
-						{file.status !== "added" ? <span>Old · base</span> : null}
-						{file.status !== "deleted" ? <span>New · head</span> : null}
+					<div className="diff-viewer__columns" aria-hidden="true">
+						<span>Old · base</span>
+						<span>New · head</span>
 					</div>
 				) : null}
 				<div
